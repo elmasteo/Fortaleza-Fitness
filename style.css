@@ -1323,3 +1323,165 @@ select {
   transition: all .15s;
 }
 .btn-nequi-confirm:hover { background: rgba(60,255,138,.2); }
+
+/* ===== ADMIN MODULE STYLES ===== */
+
+.section-header-admin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-section-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.admin-section-title > span {
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+.admin-title-text {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  letter-spacing: 4px;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.admin-title-sub {
+  font-family: monospace;
+  font-size: .7rem;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.btn-admin-logout {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-admin-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+/* Pending payments card */
+.admin-pending-card .card-header-admin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: monospace;
+  font-size: .7rem;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.badge-pending {
+  background: rgba(255,159,60,.1);
+  color: #ff9f3c;
+  border: 1px solid rgba(255,159,60,.25);
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.pending-payment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pending-payment-row:last-child { border-bottom: none; }
+
+.pending-name {
+  font-weight: 600;
+  font-size: .9rem;
+}
+.pending-meta {
+  font-size: .75rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  font-family: monospace;
+}
+
+.pending-actions { display: flex; gap: 8px; }
+
+.btn-confirm-pay {
+  background: rgba(60,255,138,.1);
+  border: 1px solid rgba(60,255,138,.3);
+  color: #3cff8a;
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-confirm-pay:hover { background: rgba(60,255,138,.2); }
+
+.btn-reject-pay {
+  background: rgba(255,68,68,.08);
+  border: 1px solid rgba(255,68,68,.25);
+  color: var(--danger);
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-reject-pay:hover { background: rgba(255,68,68,.18); }
+
+/* Admin auth modal */
+.modal-narrow { max-width: 380px !important; }
+
+.admin-auth-icon {
+  text-align: center;
+  font-size: 2.4rem;
+  margin-bottom: .75rem;
+}
+
+.admin-auth-desc {
+  text-align: center;
+  font-size: .85rem;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.admin-auth-error {
+  min-height: 1.2em;
+  font-size: .8rem;
+  color: var(--danger);
+  margin-top: .5rem;
+  font-family: monospace;
+}
+
+/* Checkin cooldown chip in member card */
+.cooldown-chip {
+  display: inline-block;
+  background: rgba(255,159,60,.1);
+  border: 1px solid rgba(255,159,60,.25);
+  color: #ff9f3c;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: .65rem;
+  font-family: monospace;
+  margin-left: 4px;
+}

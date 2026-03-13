@@ -4,15 +4,24 @@
 // =====================================================
 
 // ===== PLANES =====
+// Tipos de plan:
+//   type: 'time'   → acceso por días (expiryDate controla el vencimiento)
+//   type: 'clases' → paquete de clases (classesLeft controla el saldo)
 const PLANS = {
-  mensual:    { name: 'Mensual',    price: 80000,   months: 1,  label: '$80.000/mes' },
-  trimestral: { name: 'Trimestral', price: 216000,  months: 3,  label: '$216.000/3m' },
-  semestral:  { name: 'Semestral',  price: 408000,  months: 6,  label: '$408.000/6m' },
-  anual:      { name: 'Anual',      price: 720000,  months: 12, label: '$720.000/año' },
+  clase:        { name: 'Clase Individual', price: 20000,  type: 'clases', classes: 1,  label: '$20.000/clase' },
+  paquete12:    { name: '12 Clases',        price: 120000, type: 'clases', classes: 12, label: '$120.000/12 clases' },
+  paquete15:    { name: '15 Clases',        price: 140000, type: 'clases', classes: 15, label: '$140.000/15 clases' },
+  mesIlimitado: { name: 'Mes Ilimitado',    price: 160000, type: 'time',   months: 1,   label: '$160.000/mes' },
 };
 
 // ===== ESTADO LOCAL =====
 let state = { members: [], payments: [], checkins: [], currentMemberId: null };
+
+// ===== AUTENTICACIÓN ADMIN =====
+// La contraseña se guarda hasheada en config.js como ADMIN_PASSWORD_HASH
+// Para generarla: en la consola del navegador ejecuta sha256('tu-contraseña')
+// O usa el helper incluido más abajo.
+let adminSession = false; // true cuando el admin ha autenticado en esta sesión
 
 // ===== SUPABASE CLIENT =====
 let db = null;
@@ -94,6 +103,7 @@ function fromSupabaseMember(r) {
     email: r.email || '', plan: r.plan, startDate: r.start_date,
     expiryDate: r.expiry_date, notes: r.notes || '',
     createdAt: r.created_at?.slice(0, 10), lastCheckin: r.last_checkin || null,
+    classesLeft: r.classes_left ?? null,
   };
 }
 function fromSupabasePayment(r) {
@@ -118,6 +128,7 @@ async function persistMember(member) {
     phone: member.phone, email: member.email, plan: member.plan,
     start_date: member.startDate, expiry_date: member.expiryDate,
     notes: member.notes, last_checkin: member.lastCheckin,
+    classes_left: member.classesLeft ?? null,
   };
   const { error } = await db.from('members').upsert(row);
   if (error) { console.error('persist member:', error); saveLocal(); }
@@ -218,6 +229,67 @@ function updateClock() {
 }
 
 // =====================================================
+//  AUTENTICACIÓN ADMIN
+// =====================================================
+
+async function sha256(msg) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function isAdmin() { return adminSession; }
+
+function requireAdmin(callback) {
+  if (adminSession) { callback(); return; }
+  openModal('adminAuthModal');
+  // Store callback to call after successful login
+  window._pendingAdminAction = callback;
+}
+
+async function submitAdminLogin() {
+  const pwd    = document.getElementById('adminPwd').value;
+  const errEl  = document.getElementById('adminAuthError');
+  if (!pwd) { errEl.textContent = 'Ingresa la contraseña'; return; }
+
+  const hash   = await sha256(pwd);
+  const stored = (typeof ADMIN_PASSWORD_HASH !== 'undefined') ? ADMIN_PASSWORD_HASH : null;
+
+  // If no hash configured, accept "admin1234" as default (warn user)
+  const defaultHash = '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918'; // sha256('admin1234')
+
+  if (!stored || stored === defaultHash) {
+    if (stored !== defaultHash) {
+      errEl.textContent = '⚠ Usando contraseña por defecto. Configura ADMIN_PASSWORD_HASH en config.js';
+    }
+  }
+
+  const validHash = stored || defaultHash;
+  if (hash !== validHash) {
+    errEl.textContent = '❌ Contraseña incorrecta';
+    document.getElementById('adminPwd').value = '';
+    document.getElementById('adminPwd').focus();
+    return;
+  }
+
+  adminSession = true;
+  errEl.textContent = '';
+  document.getElementById('adminPwd').value = '';
+  closeModal('adminAuthModal');
+
+  // Execute pending action
+  if (window._pendingAdminAction) {
+    const action = window._pendingAdminAction;
+    window._pendingAdminAction = null;
+    action();
+  }
+}
+
+function adminLogout() {
+  adminSession = false;
+  showToast('Sesión admin cerrada');
+}
+
+// =====================================================
 //  NAVEGACIÓN
 // =====================================================
 function showSection(name) {
@@ -277,6 +349,7 @@ function switchNequiTab(tab, btn) {
 //  MIEMBROS
 // =====================================================
 async function addMember() {
+  if (!isAdmin()) { requireAdmin(() => {}); return; }
   const name      = document.getElementById('mName').value.trim();
   const id        = document.getElementById('mId').value.trim();
   const phone     = document.getElementById('mPhone').value.trim();
@@ -296,15 +369,17 @@ async function addMember() {
     return;
   }
 
-  const expiryDate = addMonths(startDate, PLANS[plan].months);
-  const member = { id: uid(), name, cedula: id, phone, email, plan, startDate, expiryDate, notes, createdAt: today(), lastCheckin: null };
+  const p = PLANS[plan];
+  const expiryDate   = p.type === 'time'   ? addMonths(startDate, p.months) : null;
+  const classesLeft  = p.type === 'clases' ? p.classes : null;
+  const member = { id: uid(), name, cedula: id, phone, email, plan, startDate, expiryDate, classesLeft, notes, createdAt: today(), lastCheckin: null };
   state.members.push(member);
   await persistMember(member);
 
   if (status === 'pagado') {
     const payment = {
       id: uid(), memberId: member.id, memberName: member.name, plan,
-      amount: PLANS[plan].price, payDate: startDate, expiryDate, method, status: 'pagado',
+      amount: PLANS[plan].price, payDate: startDate, expiryDate: expiryDate || startDate, method, status: 'pagado',
     };
     state.payments.push(payment);
     await persistPayment(payment);
@@ -344,8 +419,15 @@ function renderMembers() {
     const badge   = overdue
       ? '<span class="member-badge vencido">VENCIDO</span>'
       : `<span class="member-badge activo">ACTIVO</span>`;
-    const days    = daysUntil(m.expiryDate);
-    const daysStr = overdue ? `Venció hace ${Math.abs(days)}d` : days <= 7 ? `⚠ Vence en ${days}d` : `Vence: ${formatDate(m.expiryDate)}`;
+    const plan    = PLANS[m.plan];
+    let daysStr;
+    if (plan?.type === 'clases') {
+      const cl = m.classesLeft ?? 0;
+      daysStr = cl <= 0 ? '⚠ Sin clases' : cl <= 2 ? `⚠ ${cl} clase${cl!==1?'s':''} restante${cl!==1?'s':''}` : `${cl} clases restantes`;
+    } else {
+      const days = daysUntil(m.expiryDate);
+      daysStr = overdue ? `Venció hace ${Math.abs(days)}d` : days <= 7 ? `⚠ Vence en ${days}d` : `Vence: ${formatDate(m.expiryDate)}`;
+    }
     return `
       <div class="member-card ${overdue ? 'overdue' : ''}" onclick="openMemberDetail('${m.id}')">
         <div class="member-card-header">
@@ -385,7 +467,7 @@ function openMemberDetail(memberId) {
       <div class="detail-item"><label>Estado</label><div class="value"><span class="member-badge ${overdue ? 'vencido' : 'activo'}">${overdue ? 'VENCIDO' : 'ACTIVO'}</span></div></div>
       <div class="detail-item"><label>Teléfono</label><div class="value">${m.phone || '—'}</div></div>
       <div class="detail-item"><label>Email</label><div class="value">${m.email || '—'}</div></div>
-      <div class="detail-item"><label>Plan Actual</label><div class="value">${PLANS[m.plan]?.name || m.plan}</div></div>
+      <div class="detail-item"><label>Plan Actual</label><div class="value">${PLANS[m.plan]?.name || m.plan}${PLANS[m.plan]?.type === 'clases' ? ` <span style="background:rgba(232,255,60,.12);color:#e8ff3c;border:1px solid rgba(232,255,60,.3);border-radius:12px;padding:2px 8px;font-size:.75rem;margin-left:6px">${m.classesLeft ?? 0} clases</span>` : ''}</div></div>
       <div class="detail-item"><label>Inicio</label><div class="value">${formatDate(m.startDate)}</div></div>
       <div class="detail-item"><label>Vencimiento</label><div class="value ${overdue ? 'text-danger' : ''}">${formatDate(m.expiryDate)}</div></div>
       <div class="detail-item"><label>Miembro desde</label><div class="value">${formatDate(m.createdAt)}</div></div>
@@ -421,6 +503,7 @@ function openMemberDetail(memberId) {
 }
 
 async function deleteMemberConfirm() {
+  if (!isAdmin()) { requireAdmin(() => deleteMemberConfirm()); return; }
   const id = state.currentMemberId;
   if (!id) return;
   const m = state.members.find(x => x.id === id);
@@ -437,7 +520,9 @@ async function deleteMemberConfirm() {
   renderDashboard();
 }
 
-function openRenewModal() { openModal('renewModal'); }
+function openRenewModal() {
+  requireAdmin(() => openModal('renewModal'));
+}
 
 async function renewPlan() {
   const id     = state.currentMemberId;
@@ -445,18 +530,21 @@ async function renewPlan() {
   const method = document.getElementById('renewMethod').value;
   if (!id || !plan) return;
 
-  const m          = state.members.find(x => x.id === id);
-  const startDate  = today();
-  const expiryDate = addMonths(startDate, PLANS[plan].months);
+  const m         = state.members.find(x => x.id === id);
+  const rp        = PLANS[plan];
+  const startDate = today();
+  const expiryDate   = rp.type === 'time'   ? addMonths(startDate, rp.months) : null;
+  const classesLeft  = rp.type === 'clases' ? (m.plan === plan && m.classesLeft ? m.classesLeft + rp.classes : rp.classes) : null;
 
-  m.plan       = plan;
-  m.startDate  = startDate;
-  m.expiryDate = expiryDate;
+  m.plan        = plan;
+  m.startDate   = startDate;
+  m.expiryDate  = expiryDate;
+  m.classesLeft = classesLeft;
   await persistMember(m);
 
   const payment = {
     id: uid(), memberId: m.id, memberName: m.name, plan,
-    amount: PLANS[plan].price, payDate: startDate, expiryDate, method, status: 'pagado',
+    amount: rp.price, payDate: startDate, expiryDate: expiryDate || startDate, method, status: 'pagado',
   };
   state.payments.push(payment);
   await persistPayment(payment);
@@ -540,9 +628,42 @@ async function registerCheckin(memberId) {
   document.getElementById('checkinSearch').value = '';
   document.getElementById('checkinSuggestions').innerHTML = '';
 
-  const overdue  = isOverdue(m.expiryDate);
-  const ts       = localISOString();   // hora local Colombia, no UTC
-  const checkin  = { id: uid(), memberId: m.id, memberName: m.name, plan: m.plan, timestamp: ts, overdue };
+  // ── Validación 1h cooldown ──────────────────────────────
+  if (m.lastCheckin) {
+    const lastTs  = new Date(m.lastCheckin);
+    const nowTs   = new Date();
+    const diffMin = (nowTs - lastTs) / 60000;
+    if (diffMin < 60) {
+      const minLeft = Math.ceil(60 - diffMin);
+      const nextOk  = new Date(lastTs.getTime() + 60 * 60000);
+      const hh = String(nextOk.getHours()).padStart(2,'0');
+      const mm = String(nextOk.getMinutes()).padStart(2,'0');
+      showToast(`⏱ ${m.name} ya ingresó. Próximo check-in válido a las ${hh}:${mm} (faltan ${minLeft} min)`, 'error');
+      return;
+    }
+  }
+
+  // ── Validación plan ─────────────────────────────────────
+  const plan = PLANS[m.plan];
+  let overdue = false;
+
+  if (plan?.type === 'time') {
+    overdue = isOverdue(m.expiryDate);
+    if (overdue) {
+      showToast(`⚠ ${m.name} — membresía VENCIDA. Debe renovar.`, 'error');
+      return;
+    }
+  } else if (plan?.type === 'clases') {
+    if (!m.classesLeft || m.classesLeft <= 0) {
+      showToast(`⚠ ${m.name} — no tiene clases disponibles. Debe recargar.`, 'error');
+      return;
+    }
+    // Descontar 1 clase
+    m.classesLeft -= 1;
+  }
+
+  const ts      = localISOString();
+  const checkin = { id: uid(), memberId: m.id, memberName: m.name, plan: m.plan, timestamp: ts, overdue };
 
   state.checkins.push(checkin);
   m.lastCheckin = ts;
@@ -550,11 +671,15 @@ async function registerCheckin(memberId) {
   await persistCheckin(checkin);
   await persistMember(m);
 
-  if (overdue) showToast(`⚠ ${m.name} ingresó — membresía VENCIDA`, 'error');
-  else showToast(`✓ ${m.name} registrado — ${PLANS[m.plan]?.name}`);
+  if (plan?.type === 'clases') {
+    showToast(`✓ ${m.name} — clase registrada. Quedan ${m.classesLeft} clase${m.classesLeft !== 1 ? 's' : ''}`);
+  } else {
+    showToast(`✓ ${m.name} registrado — ${plan?.name}`);
+  }
 
   renderTodayCheckins();
   renderDashboard();
+  renderMembers();
 }
 
 function renderTodayCheckins() {
@@ -583,8 +708,16 @@ function renderTodayCheckins() {
 //  DASHBOARD
 // =====================================================
 function renderDashboard() {
-  const active  = state.members.filter(m => !isOverdue(m.expiryDate)).length;
-  const overdue = state.members.filter(m => isOverdue(m.expiryDate)).length;
+  const active  = state.members.filter(m => {
+    const p = PLANS[m.plan];
+    if (p?.type === 'clases') return (m.classesLeft ?? 0) > 0;
+    return !isOverdue(m.expiryDate);
+  }).length;
+  const overdue = state.members.filter(m => {
+    const p = PLANS[m.plan];
+    if (p?.type === 'clases') return (m.classesLeft ?? 0) <= 0;
+    return isOverdue(m.expiryDate);
+  }).length;
   const todayStr = today();
   const checkins = state.checkins.filter(c => c.timestamp.startsWith(todayStr)).length;
 
@@ -639,20 +772,22 @@ async function seedDemo() {
   if (state.members.length > 0) return;
 
   const demos = [
-    { name:'Carlos Rodríguez', cedula:'1020405678', phone:'301 234 5678', email:'carlos@email.com', plan:'mensual', daysAgo:10 },
-    { name:'Laura Gómez',      cedula:'1032456789', phone:'312 345 6789', email:'laura@email.com',  plan:'trimestral', daysAgo:40 },
-    { name:'Andrés Martínez',  cedula:'79456321',   phone:'320 456 7890', email:'andres@email.com', plan:'anual', daysAgo:180 },
-    { name:'Valentina Torres', cedula:'1015678901', phone:'315 567 8901', email:'vale@email.com',   plan:'mensual', daysAgo:35, notes:'Lesión rodilla' },
-    { name:'Sebastián López',  cedula:'1000123456', phone:'300 678 9012', email:'seba@email.com',   plan:'semestral', daysAgo:20 },
+    { name:'Carlos Rodríguez', cedula:'1020405678', phone:'301 234 5678', email:'carlos@email.com', plan:'mesIlimitado', daysAgo:10 },
+    { name:'Laura Gómez',      cedula:'1032456789', phone:'312 345 6789', email:'laura@email.com',  plan:'paquete12',   classes:8 },
+    { name:'Andrés Martínez',  cedula:'79456321',   phone:'320 456 7890', email:'andres@email.com', plan:'mesIlimitado', daysAgo:5 },
+    { name:'Valentina Torres', cedula:'1015678901', phone:'315 567 8901', email:'vale@email.com',   plan:'paquete15',   classes:2, notes:'Lesión rodilla' },
+    { name:'Sebastián López',  cedula:'1000123456', phone:'300 678 9012', email:'seba@email.com',   plan:'clase',       classes:0 },
   ];
 
   for (const dm of demos) {
-    const d = new Date(); d.setDate(d.getDate() - dm.daysAgo);
-    const startDate  = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
-    const expiryDate = addMonths(startDate, PLANS[dm.plan].months);
-    const m = { id:uid(), name:dm.name, cedula:dm.cedula, phone:dm.phone, email:dm.email, plan:dm.plan, startDate, expiryDate, notes:dm.notes||'', createdAt:startDate, lastCheckin:null };
+    const d = new Date(); d.setDate(d.getDate() - (dm.daysAgo || 0));
+    const startDate   = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+    const plan        = PLANS[dm.plan];
+    const expiryDate  = plan.type === 'time'   ? addMonths(startDate, plan.months) : null;
+    const classesLeft = plan.type === 'clases' ? (dm.classes ?? plan.classes) : null;
+    const m = { id:uid(), name:dm.name, cedula:dm.cedula, phone:dm.phone, email:dm.email, plan:dm.plan, startDate, expiryDate, classesLeft, notes:dm.notes||'', createdAt:startDate, lastCheckin:null };
     state.members.push(m);
-    state.payments.push({ id:uid(), memberId:m.id, memberName:m.name, plan:dm.plan, amount:PLANS[dm.plan].price, payDate:startDate, expiryDate, method:'efectivo', status:'pagado' });
+    state.payments.push({ id:uid(), memberId:m.id, memberName:m.name, plan:dm.plan, amount:plan.price, payDate:startDate, expiryDate: expiryDate || startDate, method:'efectivo', status:'pagado' });
   }
 
   // 3 check-ins hoy
@@ -664,6 +799,145 @@ async function seedDemo() {
   });
 
   saveLocal();
+}
+
+// =====================================================
+//  MÓDULO ADMIN
+// =====================================================
+
+function openAdminSection() {
+  requireAdmin(() => {
+    showSection('admin');
+    renderAdminSection();
+  });
+}
+
+function renderAdminSection() {
+  // Populate member select
+  const sel = document.getElementById('adminMember');
+  if (sel) {
+    sel.innerHTML = '<option value="">Seleccionar miembro...</option>' +
+      state.members.map(m => `<option value="${m.id}">${m.name} — ${m.cedula}</option>`).join('');
+  }
+
+  // Render pending payments list
+  const pending = state.payments.filter(p => p.status === 'pendiente');
+  const el = document.getElementById('pendingPaymentsList');
+  const countEl = document.getElementById('pendingCount');
+  if (countEl) countEl.textContent = pending.length;
+
+  if (!el) return;
+  if (pending.length === 0) {
+    el.innerHTML = '<div class="empty-state">No hay pagos pendientes</div>';
+    return;
+  }
+
+  el.innerHTML = pending.map(p => `
+    <div class="pending-payment-row">
+      <div class="pending-info">
+        <div class="pending-name">${p.memberName}</div>
+        <div class="pending-meta">${PLANS[p.plan]?.name || p.plan} · ${formatCOP(p.amount)} · ${formatDate(p.payDate)}</div>
+      </div>
+      <div class="pending-actions">
+        <button class="btn-confirm-pay" onclick="confirmPendingPayment('${p.id}')">✓ Confirmar</button>
+        <button class="btn-reject-pay" onclick="rejectPendingPayment('${p.id}')">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+async function confirmPendingPayment(paymentId) {
+  const payment = state.payments.find(p => p.id === paymentId);
+  if (!payment) return;
+  payment.status = 'pagado';
+
+  // Update member plan/classes
+  const member = state.members.find(m => m.id === payment.memberId);
+  if (member) {
+    const plan = PLANS[payment.plan];
+    member.plan = payment.plan;
+    if (plan?.type === 'time') {
+      member.expiryDate  = payment.expiryDate;
+    } else if (plan?.type === 'clases') {
+      member.classesLeft = (member.classesLeft || 0) + plan.classes;
+      member.expiryDate  = null;
+    }
+    await persistMember(member);
+  }
+
+  await persistPayment(payment);
+  showToast(`✓ Pago de ${payment.memberName} confirmado`);
+  renderAdminSection();
+  renderDashboard();
+  renderMembers();
+}
+
+async function rejectPendingPayment(paymentId) {
+  if (!confirm('¿Eliminar este pago pendiente?')) return;
+  state.payments = state.payments.filter(p => p.id !== paymentId);
+  if (useSupabase) {
+    await db.from('payments').delete().eq('id', paymentId);
+  }
+  saveLocal();
+  showToast('Pago pendiente eliminado', 'error');
+  renderAdminSection();
+}
+
+function adminMemberSelected() {
+  // Auto-fill plan if member has a current plan
+  const memberId = document.getElementById('adminMember').value;
+  if (!memberId) return;
+  const m = state.members.find(x => x.id === memberId);
+  if (m?.plan) document.getElementById('adminPlan').value = m.plan;
+  adminPlanSelected();
+}
+
+function adminPlanSelected() {
+  const planKey = document.getElementById('adminPlan').value;
+  const plan = PLANS[planKey];
+  if (plan) document.getElementById('adminAmount').value = plan.price;
+}
+
+async function adminRegisterPayment() {
+  const memberId = document.getElementById('adminMember').value;
+  const planKey  = document.getElementById('adminPlan').value;
+  const method   = document.getElementById('adminMethod').value;
+  const amount   = Number(document.getElementById('adminAmount').value);
+
+  if (!memberId || !planKey || !amount) {
+    showToast('Completa todos los campos', 'error');
+    return;
+  }
+
+  const member = state.members.find(m => m.id === memberId);
+  const plan   = PLANS[planKey];
+  if (!member || !plan) return;
+
+  const startDate  = today();
+  const expiryDate = plan.type === 'time' ? addMonths(startDate, plan.months) : null;
+
+  // Update member
+  member.plan = planKey;
+  if (plan.type === 'time') {
+    member.expiryDate  = expiryDate;
+  } else if (plan.type === 'clases') {
+    member.classesLeft = (member.classesLeft || 0) + plan.classes;
+    member.expiryDate  = null;
+  }
+  await persistMember(member);
+
+  const payment = {
+    id: uid(), memberId: member.id, memberName: member.name, plan: planKey,
+    amount, payDate: startDate, expiryDate: expiryDate || startDate, method, status: 'pagado',
+  };
+  state.payments.push(payment);
+  await persistPayment(payment);
+
+  showToast(`✓ Pago registrado: ${member.name} — ${plan.name}`);
+  document.getElementById('adminMember').value  = '';
+  document.getElementById('adminAmount').value  = '';
+  renderAdminSection();
+  renderDashboard();
+  renderMembers();
 }
 
 // =====================================================

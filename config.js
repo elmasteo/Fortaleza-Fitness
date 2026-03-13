@@ -11,3 +11,5 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // --- NEQUI / BRE-B ---
 // Número de celular registrado en Nequi (con el que recibes pagos)
 const NEQUI_NUMBER = '3157862008';  // ← reemplaza con tu número real
+
+const ADMIN_PASSWORD_HASH = '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918';
