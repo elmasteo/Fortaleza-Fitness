@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FORTALEZA FITNESS — Sistema de Gestión</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">⬡</span>
+    <div>
+      <h1 class="brand-name">FORTALEZA</h1>
+      <span class="brand-sub">FITNESS SYSTEM</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <button class="nav-item active" onclick="showSection('dashboard')" data-section="dashboard">
+      <span class="nav-icon">◈</span> Dashboard
+    </button>
+    <button class="nav-item" onclick="showSection('members')" data-section="members">
+      <span class="nav-icon">◉</span> Miembros
+    </button>
+    <button class="nav-item" onclick="showSection('payments')" data-section="payments">
+      <span class="nav-icon">◎</span> Pagos
+    </button>
+    <button class="nav-item" onclick="showSection('checkin')" data-section="checkin">
+      <span class="nav-icon">◍</span> Check-In
+    </button>
+    <button class="nav-item" onclick="showSection('plans')" data-section="plans">
+      <span class="nav-icon">◌</span> Planes
+    </button>
+  </nav>
+
+  <div class="db-status" id="dbStatus">
+    <span class="status-dot-db" id="statusDot"></span>
+    <span id="statusText">Conectando BD...</span>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="gym-status">
+      <span class="status-dot"></span>
+      <span>Sistema activo</span>
+    </div>
+  </div>
+</aside>
+
+<main class="main-content">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <div class="page-title" id="pageTitle">Dashboard</div>
+    </div>
+    <div class="topbar-right">
+      <div class="clock" id="clock"></div>
+      <button class="btn-primary btn-sm" onclick="openModal('addMemberModal')">+ Nuevo Miembro</button>
+    </div>
+  </header>
+
+  <!-- DASHBOARD -->
+  <section class="section active" id="section-dashboard">
+    <div class="stats-grid">
+      <div class="stat-card stat-accent">
+        <div class="stat-label">Miembros Activos</div>
+        <div class="stat-value" id="stat-active">0</div>
+        <div class="stat-icon">◉</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ingresos del Mes</div>
+        <div class="stat-value" id="stat-revenue">$0</div>
+        <div class="stat-icon">◎</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Check-ins Hoy</div>
+        <div class="stat-value" id="stat-checkins">0</div>
+        <div class="stat-icon">◍</div>
+      </div>
+      <div class="stat-card stat-warning">
+        <div class="stat-label">Pagos Vencidos</div>
+        <div class="stat-value" id="stat-overdue">0</div>
+        <div class="stat-icon">⚠</div>
+      </div>
+    </div>
+    <div class="dashboard-grid">
+      <div class="card">
+        <div class="card-header"><h3>Últimos Check-ins</h3><span class="badge">Hoy</span></div>
+        <div class="checkin-list" id="dashboardCheckins"><div class="empty-state">No hay check-ins hoy</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Pagos Próximos a Vencer</h3><span class="badge badge-warn">Próximos 7 días</span></div>
+        <div class="checkin-list" id="dashboardExpiring"><div class="empty-state">Sin vencimientos próximos</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEMBERS -->
+  <section class="section" id="section-members">
+    <div class="section-header">
+      <div class="search-bar">
+        <span class="search-icon">⌕</span>
+        <input type="text" placeholder="Buscar miembro..." id="searchMembers" oninput="filterMembers()" />
+      </div>
+      <div class="filter-group">
+        <select id="filterPlan" onchange="filterMembers()">
+          <option value="">Todos los planes</option>
+          <option value="mensual">Mensual</option>
+          <option value="trimestral">Trimestral</option>
+          <option value="semestral">Semestral</option>
+          <option value="anual">Anual</option>
+        </select>
+        <select id="filterStatus" onchange="filterMembers()">
+          <option value="">Todos los estados</option>
+          <option value="activo">Activo</option>
+          <option value="vencido">Vencido</option>
+        </select>
+      </div>
+    </div>
+    <div class="members-grid" id="membersGrid"></div>
+  </section>
+
+  <!-- PAYMENTS -->
+  <section class="section" id="section-payments">
+    <div class="section-header">
+      <h3 style="color:var(--text-primary);font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:2px;">HISTORIAL DE PAGOS</h3>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Miembro</th><th>Plan</th><th>Monto</th>
+            <th>Fecha de Pago</th><th>Próx. Vencimiento</th><th>Método</th><th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="paymentsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CHECK-IN -->
+  <section class="section" id="section-checkin">
+    <div class="checkin-hero">
+      <div class="checkin-search-card">
+        <h2>Registro de Entrada</h2>
+        <p>Busca al miembro por nombre, cédula o ID</p>
+        <div class="checkin-input-group">
+          <input type="text" id="checkinSearch" placeholder="Buscar miembro..." oninput="searchCheckin()" autocomplete="off" />
+          <button class="btn-primary" onclick="manualCheckin()">Registrar</button>
+        </div>
+        <div class="checkin-suggestions" id="checkinSuggestions"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:2rem;">
+      <div class="card-header">
+        <h3>Check-ins de Hoy</h3>
+        <span class="badge" id="todayCount">0 registros</span>
+      </div>
+      <div id="todayCheckins" class="checkin-list"></div>
+    </div>
+  </section>
+
+  <!-- PLANS -->
+  <section class="section" id="section-plans">
+    <div class="plans-grid">
+      <div class="plan-card" data-plan="mensual">
+        <div class="plan-badge">Popular</div>
+        <div class="plan-name">MENSUAL</div>
+        <div class="plan-price">$80.000<span>/mes</span></div>
+        <ul class="plan-features">
+          <li>✓ Acceso ilimitado</li><li>✓ Vestiarios</li>
+          <li>✓ Casillero</li><li>× Clases grupales</li>
+        </ul>
+        <button class="btn-plan btn-nequi" onclick="openNequiModal('mensual', 80000)">
+          <span>📱</span> Pagar con Nequi
+        </button>
+      </div>
+      <div class="plan-card plan-featured" data-plan="trimestral">
+        <div class="plan-badge plan-badge-hot">Ahorra 10%</div>
+        <div class="plan-name">TRIMESTRAL</div>
+        <div class="plan-price">$216.000<span>/3 meses</span></div>
+        <ul class="plan-features">
+          <li>✓ Acceso ilimitado</li><li>✓ Vestiarios</li>
+          <li>✓ Casillero</li><li>✓ Clases grupales</li>
+        </ul>
+        <button class="btn-plan btn-nequi" onclick="openNequiModal('trimestral', 216000)">
+          <span>📱</span> Pagar con Nequi
+        </button>
+      </div>
+      <div class="plan-card" data-plan="semestral">
+        <div class="plan-badge">Ahorra 15%</div>
+        <div class="plan-name">SEMESTRAL</div>
+        <div class="plan-price">$408.000<span>/6 meses</span></div>
+        <ul class="plan-features">
+          <li>✓ Acceso ilimitado</li><li>✓ Vestiarios</li>
+          <li>✓ Casillero</li><li>✓ Clases grupales</li>
+        </ul>
+        <button class="btn-plan btn-nequi" onclick="openNequiModal('semestral', 408000)">
+          <span>📱</span> Pagar con Nequi
+        </button>
+      </div>
+      <div class="plan-card" data-plan="anual">
+        <div class="plan-badge plan-badge-gold">Mejor Valor</div>
+        <div class="plan-name">ANUAL</div>
+        <div class="plan-price">$720.000<span>/año</span></div>
+        <ul class="plan-features">
+          <li>✓ Acceso ilimitado</li><li>✓ Vestiarios</li>
+          <li>✓ Casillero</li><li>✓ Clases grupales</li>
+        </ul>
+        <button class="btn-plan btn-nequi" onclick="openNequiModal('anual', 720000)">
+          <span>📱</span> Pagar con Nequi
+        </button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- MODAL: ADD MEMBER -->
+<div class="modal-overlay" id="addMemberModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>NUEVO MIEMBRO</h2>
+      <button class="modal-close" onclick="closeModal('addMemberModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>Nombre Completo *</label><input type="text" id="mName" placeholder="Ej: Carlos Rodríguez" /></div>
+        <div class="form-group"><label>Cédula / ID *</label><input type="text" id="mId" placeholder="Ej: 1234567890" /></div>
+        <div class="form-group"><label>Teléfono</label><input type="tel" id="mPhone" placeholder="Ej: 300 123 4567" /></div>
+        <div class="form-group"><label>Email</label><input type="email" id="mEmail" placeholder="correo@ejemplo.com" /></div>
+        <div class="form-group">
+          <label>Plan *</label>
+          <select id="mPlan">
+            <option value="mensual">Mensual — $80.000</option>
+            <option value="trimestral">Trimestral — $216.000</option>
+            <option value="semestral">Semestral — $408.000</option>
+            <option value="anual">Anual — $720.000</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Fecha de Inicio *</label><input type="date" id="mStartDate" /></div>
+        <div class="form-group">
+          <label>Método de Pago</label>
+          <select id="mPayMethod">
+            <option value="efectivo">Efectivo</option>
+            <option value="nequi">Nequi / Bre-B</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta">Tarjeta</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Estado de Pago</label>
+          <select id="mPayStatus">
+            <option value="pagado">Pagado</option>
+            <option value="pendiente">Pendiente</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group full-width">
+        <label>Notas</label>
+        <textarea id="mNotes" placeholder="Observaciones, condiciones médicas, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('addMemberModal')">Cancelar</button>
+      <button class="btn-primary" onclick="addMember()">Registrar Miembro</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: MEMBER DETAIL -->
+<div class="modal-overlay" id="memberDetailModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="detailName">MIEMBRO</h2>
+      <button class="modal-close" onclick="closeModal('memberDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="memberDetailBody"></div>
+    <div class="modal-footer">
+      <button class="btn-danger" onclick="deleteMemberConfirm()">Eliminar</button>
+      <button class="btn-secondary" onclick="closeModal('memberDetailModal')">Cerrar</button>
+      <button class="btn-primary" onclick="openRenewModal()">Renovar Plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: RENEW -->
+<div class="modal-overlay" id="renewModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>RENOVAR PLAN</h2>
+      <button class="modal-close" onclick="closeModal('renewModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nuevo Plan</label>
+        <select id="renewPlan">
+          <option value="mensual">Mensual — $80.000</option>
+          <option value="trimestral">Trimestral — $216.000</option>
+          <option value="semestral">Semestral — $408.000</option>
+          <option value="anual">Anual — $720.000</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Método de Pago</label>
+        <select id="renewMethod">
+          <option value="efectivo">Efectivo</option>
+          <option value="nequi">Nequi / Bre-B</option>
+          <option value="transferencia">Transferencia</option>
+          <option value="tarjeta">Tarjeta</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('renewModal')">Cancelar</button>
+      <button class="btn-primary" onclick="renewPlan()">Confirmar Renovación</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NEQUI / BRE-B -->
+<div class="modal-overlay" id="nequiModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>PAGAR CON NEQUI</h2>
+      <button class="modal-close" onclick="closeModal('nequiModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="nequi-plan-info" id="nequiPlanInfo"></div>
+
+      <div class="nequi-tabs">
+        <button class="nequi-tab active" onclick="switchNequiTab('qr', this)">📷 QR Nequi</button>
+        <button class="nequi-tab" onclick="switchNequiTab('breb', this)">⚡ Bre-B</button>
+        <button class="nequi-tab" onclick="switchNequiTab('instructions', this)">📋 Pasos</button>
+      </div>
+
+      <!-- QR TAB -->
+      <div class="nequi-tab-content active" id="tab-qr">
+        <div class="qr-container">
+          <div class="qr-label">Escanea con tu app Nequi</div>
+          <div class="qr-wrapper">
+            <img id="nequiQRImg" src="nequi-qr.png" alt="QR Nequi"
+              onerror="this.style.display='none'; document.getElementById('qrFallback').style.display='flex';"
+              style="width:200px;height:200px;border-radius:8px;display:block;" />
+            <div id="qrFallback" class="qr-fallback" style="display:none;">
+              <div class="qr-placeholder-icon">📱</div>
+              <div class="qr-placeholder-text">Tu QR de Nequi<br><strong>va aquí</strong></div>
+              <div class="qr-placeholder-hint">Reemplaza <code>nequi-qr.png</code> en la carpeta del proyecto</div>
+            </div>
+          </div>
+          <div class="nequi-account-number" id="nequiNumberDisplay"></div>
+          <div class="qr-steps">
+            <p>① Abre la app <strong>Nequi</strong></p>
+            <p>② Ve a <strong>Cobrar → Escanear QR</strong></p>
+            <p>③ Confirma el monto y paga</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- BRE-B TAB -->
+      <div class="nequi-tab-content" id="tab-breb">
+        <div class="breb-container">
+          <div class="breb-header">
+            <span class="breb-logo-icon">⚡</span>
+            <div>
+              <div class="breb-title">Bre-B</div>
+              <div class="breb-subtitle">Transferencia inmediata — disponible 24/7 en todos los bancos</div>
+            </div>
+          </div>
+          <div class="breb-steps">
+            <div class="breb-step">
+              <div class="step-num">1</div>
+              <div>Abre tu app bancaria o Nequi y busca <strong>Bre-B</strong> o <strong>Transferencia inmediata</strong></div>
+            </div>
+            <div class="breb-step">
+              <div class="step-num">2</div>
+              <div>Ingresa el número de celular Nequi:<br>
+                <span class="breb-highlight" id="brebNumberDisplay"></span>
+              </div>
+            </div>
+            <div class="breb-step">
+              <div class="step-num">3</div>
+              <div>Monto exacto:<br><span class="breb-amount" id="brebAmountDisplay"></span></div>
+            </div>
+            <div class="breb-step">
+              <div class="step-num">4</div>
+              <div>En el concepto escribe tu <strong>nombre</strong> y el <strong>plan</strong></div>
+            </div>
+          </div>
+          <div class="breb-banks">
+            <span class="breb-banks-title">Compatible con:</span>
+            Bancolombia · Davivienda · Nequi · Daviplata · Banco de Bogotá · BBVA · Scotiabank · Falabella · y más
+          </div>
+        </div>
+      </div>
+
+      <!-- INSTRUCTIONS TAB -->
+      <div class="nequi-tab-content" id="tab-instructions">
+        <div class="payment-instructions">
+          <div class="instr-item"><span class="instr-icon">📸</span><div>Toma captura de pantalla del <strong>comprobante de pago</strong></div></div>
+          <div class="instr-item"><span class="instr-icon">📲</span><div>Envíala al administrador del gimnasio para activar tu membresía</div></div>
+          <div class="instr-item"><span class="instr-icon">⏱</span><div>Tu plan se activa en máximo <strong>1 hora hábil</strong> tras confirmar el pago</div></div>
+          <div class="instr-item"><span class="instr-icon">✅</span><div>El administrador registra el pago en el sistema y queda disponible el acceso</div></div>
+        </div>
+      </div>
+
+      <div class="nequi-confirm-note">¿Ya realizaste el pago? Muéstrale el comprobante al administrador.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('nequiModal')">Cerrar</button>
+      <button class="btn-nequi-confirm" onclick="closeModal('nequiModal');showToast('✓ Muestra tu comprobante al administrador')">Ya pagué ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
