@@ -175,9 +175,27 @@ function formatDate(s) {
 function addMonths(dateStr, months) {
   const d = new Date(dateStr + 'T00:00:00');
   d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
+  // Use local date parts to avoid UTC shift
+  return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
 }
-function today() { return new Date().toISOString().slice(0, 10); }
+// Devuelve la fecha local como "YYYY-MM-DD" (sin depender de UTC)
+function today() {
+  const d = new Date();
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+// Devuelve timestamp en hora local como "YYYY-MM-DDTHH:MM:SS"
+// Evita el desfase UTC-5 de Colombia que produce toISOString()
+function localISOString() {
+  const d = new Date();
+  const pad = v => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` +
+         `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 function isOverdue(exp) { return exp < today(); }
 function daysUntil(s) {
   return Math.ceil((new Date(s + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
@@ -523,7 +541,7 @@ async function registerCheckin(memberId) {
   document.getElementById('checkinSuggestions').innerHTML = '';
 
   const overdue  = isOverdue(m.expiryDate);
-  const ts       = new Date().toISOString();
+  const ts       = localISOString();   // hora local Colombia, no UTC
   const checkin  = { id: uid(), memberId: m.id, memberName: m.name, plan: m.plan, timestamp: ts, overdue };
 
   state.checkins.push(checkin);
@@ -630,7 +648,7 @@ async function seedDemo() {
 
   for (const dm of demos) {
     const d = new Date(); d.setDate(d.getDate() - dm.daysAgo);
-    const startDate  = d.toISOString().slice(0, 10);
+    const startDate  = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
     const expiryDate = addMonths(startDate, PLANS[dm.plan].months);
     const m = { id:uid(), name:dm.name, cedula:dm.cedula, phone:dm.phone, email:dm.email, plan:dm.plan, startDate, expiryDate, notes:dm.notes||'', createdAt:startDate, lastCheckin:null };
     state.members.push(m);
@@ -640,7 +658,9 @@ async function seedDemo() {
   // 3 check-ins hoy
   state.members.slice(0, 3).forEach((m, i) => {
     const t = new Date(); t.setHours(6 + i * 2, 30, 0, 0);
-    state.checkins.push({ id:uid(), memberId:m.id, memberName:m.name, plan:m.plan, timestamp:t.toISOString(), overdue:false });
+    const pad = v => String(v).padStart(2,'0');
+    const ts = `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}T${pad(t.getHours())}:${pad(t.getMinutes())}:00`;
+    state.checkins.push({ id:uid(), memberId:m.id, memberName:m.name, plan:m.plan, timestamp:ts, overdue:false });
   });
 
   saveLocal();
