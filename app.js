@@ -305,12 +305,13 @@ function showSection(name) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   document.getElementById(`section-${name}`)?.classList.add('active');
   document.querySelector(`[data-section="${name}"]`)?.classList.add('active');
-  const titles = { dashboard:'Dashboard', members:'Miembros', payments:'Pagos', checkin:'Check-In', plans:'Planes' };
+  const titles = { dashboard:'Dashboard', members:'Miembros', payments:'Pagos', checkin:'Check-In', plans:'Planes', admin:'Admin' };
   document.getElementById('pageTitle').textContent = titles[name] || name;
   if (name === 'dashboard') renderDashboard();
   if (name === 'members')   renderMembers();
   if (name === 'payments')  renderPayments();
   if (name === 'checkin')   renderTodayCheckins();
+  if (name === 'admin')     renderAdminSection();
   if (window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
 }
 
@@ -386,21 +387,25 @@ async function addMember() {
   pendingNewMemberPhoto = null; // reset for next use
   const prevEl = document.getElementById('newMemberPhotoPreview');
   if (prevEl) prevEl.innerHTML = '<span style="font-size:2rem;opacity:.3">📷</span>';
+  // Si el pago es pendiente y el plan es de clases, no otorgar clases todavía
+  if (status === 'pendiente' && p.type === 'clases') {
+    member.classesLeft = 0;
+  }
+
   state.members.push(member);
   await persistMember(member);
 
-  if (status === 'pagado') {
-    const payment = {
-      id: uid(), memberId: member.id, memberName: member.name, plan,
-      amount: PLANS[plan].price, payDate: startDate, expiryDate: expiryDate || startDate, method, status: 'pagado',
-    };
-    state.payments.push(payment);
-    await persistPayment(payment);
-  }
+  // Siempre crear el registro de pago con el estado seleccionado
+  const payment = {
+    id: uid(), memberId: member.id, memberName: member.name, plan,
+    amount: PLANS[plan].price, payDate: startDate, expiryDate: expiryDate || startDate, method, status,
+  };
+  state.payments.push(payment);
+  await persistPayment(payment);
 
   closeModal('addMemberModal');
   clearAddForm();
-  showToast(`✓ ${name} registrado`);
+  showToast('✓ ' + name + ' registrado' + (status === 'pendiente' ? ' — pago pendiente en Admin' : ''));
   showSection('members');
 }
 
@@ -867,64 +872,82 @@ async function seedDemo() {
 function openAdminSection() {
   requireAdmin(() => {
     showSection('admin');
-    renderAdminSection();
+    // renderAdminSection is also called inside showSection, but call again to be safe
   });
 }
 
 function renderAdminSection() {
-  // Populate member select
+  // Populate member select (todos los miembros activos)
   const sel = document.getElementById('adminMember');
   if (sel) {
     sel.innerHTML = '<option value="">Seleccionar miembro...</option>' +
-      state.members.map(m => `<option value="${m.id}">${m.name} — ${m.cedula}</option>`).join('');
+      state.members
+        .filter(m => !m.disabled)
+        .map(m => `<option value="${m.id}">${m.name} — ${m.cedula}</option>`)
+        .join('');
   }
 
-  // Render pending payments list
+  // ── Pagos pendientes: status === 'pendiente' ─────────────
   const pending = state.payments.filter(p => p.status === 'pendiente');
   const el = document.getElementById('pendingPaymentsList');
   const countEl = document.getElementById('pendingCount');
   if (countEl) countEl.textContent = pending.length;
 
   if (!el) return;
+
   if (pending.length === 0) {
-    el.innerHTML = '<div class="empty-state">No hay pagos pendientes</div>';
+    el.innerHTML = '<div class="empty-state">✓ No hay pagos pendientes</div>';
     return;
   }
 
-  el.innerHTML = pending.map(p => `
-    <div class="pending-payment-row">
-      <div class="pending-info">
-        <div class="pending-name">${p.memberName}</div>
-        <div class="pending-meta">${PLANS[p.plan]?.name || p.plan} · ${formatCOP(p.amount)} · ${formatDate(p.payDate)}</div>
-      </div>
-      <div class="pending-actions">
-        <button class="btn-confirm-pay" onclick="confirmPendingPayment('${p.id}')">✓ Confirmar</button>
-        <button class="btn-reject-pay" onclick="rejectPendingPayment('${p.id}')">✕</button>
-      </div>
-    </div>`).join('');
+  el.innerHTML = pending.map(p => {
+    const member = state.members.find(m => m.id === p.memberId);
+    const planObj = PLANS[p.plan];
+    const methodLabel = { efectivo:'Efectivo', nequi:'Nequi/Bre-B', transferencia:'Transferencia', tarjeta:'Tarjeta' };
+    return `
+      <div class="pending-payment-row">
+        <div class="pending-avatar">${initials(p.memberName)}</div>
+        <div class="pending-info">
+          <div class="pending-name">${p.memberName}</div>
+          <div class="pending-meta">
+            ${planObj?.name || p.plan} · ${formatCOP(p.amount)} · ${methodLabel[p.method] || p.method} · ${formatDate(p.payDate)}
+          </div>
+          ${member?.cedula ? `<div class="pending-cedula">CC ${member.cedula}</div>` : ''}
+        </div>
+        <div class="pending-actions">
+          <button class="btn-confirm-pay" onclick="confirmPendingPayment('${p.id}')">✓ Confirmar</button>
+          <button class="btn-reject-pay" onclick="rejectPendingPayment('${p.id}')">✕ Rechazar</button>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 async function confirmPendingPayment(paymentId) {
   const payment = state.payments.find(p => p.id === paymentId);
   if (!payment) return;
+
+  // Marcar pago como pagado
   payment.status = 'pagado';
 
-  // Update member plan/classes
+  // Activar plan del miembro
   const member = state.members.find(m => m.id === payment.memberId);
   if (member) {
     const plan = PLANS[payment.plan];
     member.plan = payment.plan;
     if (plan?.type === 'time') {
-      member.expiryDate  = payment.expiryDate;
+      // Para planes de tiempo: extender desde hoy (o desde vencimiento actual si aún está activo)
+      const base = member.expiryDate && !isOverdue(member.expiryDate) ? member.expiryDate : today();
+      member.expiryDate  = addMonths(base, plan.months);
     } else if (plan?.type === 'clases') {
+      // Para planes de clases: sumar las clases del plan
       member.classesLeft = (member.classesLeft || 0) + plan.classes;
-      member.expiryDate  = null;
     }
+    member.disabled = false; // reactivar si estaba deshabilitado
     await persistMember(member);
   }
 
   await persistPayment(payment);
-  showToast(`✓ Pago de ${payment.memberName} confirmado`);
+  showToast('✓ Pago de ' + payment.memberName + ' confirmado — plan activado');
   renderAdminSection();
   renderDashboard();
   renderMembers();
