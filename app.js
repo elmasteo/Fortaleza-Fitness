@@ -104,6 +104,10 @@ function fromSupabaseMember(r) {
     expiryDate: r.expiry_date, notes: r.notes || '',
     createdAt: r.created_at?.slice(0, 10), lastCheckin: r.last_checkin || null,
     classesLeft: r.classes_left ?? null,
+    disabled: r.disabled ?? false,
+    photo: r.photo ?? null,
+    stats: r.stats ? (typeof r.stats === 'string' ? JSON.parse(r.stats) : r.stats) : {},
+    statsHistory: r.stats_history ? (typeof r.stats_history === 'string' ? JSON.parse(r.stats_history) : r.stats_history) : [],
   };
 }
 function fromSupabasePayment(r) {
@@ -129,6 +133,10 @@ async function persistMember(member) {
     start_date: member.startDate, expiry_date: member.expiryDate,
     notes: member.notes, last_checkin: member.lastCheckin,
     classes_left: member.classesLeft ?? null,
+    disabled: member.disabled ?? false,
+    photo: member.photo ?? null,
+    stats: member.stats ? JSON.stringify(member.stats) : null,
+    stats_history: member.statsHistory ? JSON.stringify(member.statsHistory) : null,
   };
   const { error } = await db.from('members').upsert(row);
   if (error) { console.error('persist member:', error); saveLocal(); }
@@ -364,15 +372,20 @@ async function addMember() {
     showToast('⚠ Completa los campos obligatorios', 'error');
     return;
   }
-  if (state.members.find(m => m.cedula === id)) {
-    showToast('⚠ Ya existe un miembro con ese ID', 'error');
+  // Cédula is the real PK — no duplicates allowed
+  const existing = state.members.find(m => m.cedula === id);
+  if (existing) {
+    showToast(`⚠ Ya existe un miembro registrado con la cédula ${id} (${existing.name})`, 'error');
     return;
   }
 
   const p = PLANS[plan];
   const expiryDate   = p.type === 'time'   ? addMonths(startDate, p.months) : null;
   const classesLeft  = p.type === 'clases' ? p.classes : null;
-  const member = { id: uid(), name, cedula: id, phone, email, plan, startDate, expiryDate, classesLeft, notes, createdAt: today(), lastCheckin: null };
+  const member = { id: uid(), name, cedula: id, phone, email, plan, startDate, expiryDate, classesLeft, notes, createdAt: today(), lastCheckin: null, disabled: false, photo: pendingNewMemberPhoto || null, stats: {}, statsHistory: [] };
+  pendingNewMemberPhoto = null; // reset for next use
+  const prevEl = document.getElementById('newMemberPhotoPreview');
+  if (prevEl) prevEl.innerHTML = '<span style="font-size:2rem;opacity:.3">📷</span>';
   state.members.push(member);
   await persistMember(member);
 
@@ -415,11 +428,15 @@ function renderMembers() {
   if (!list.length) { grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:3rem">No se encontraron miembros</div>'; return; }
 
   grid.innerHTML = list.map(m => {
-    const overdue = isOverdue(m.expiryDate);
-    const badge   = overdue
-      ? '<span class="member-badge vencido">VENCIDO</span>'
-      : `<span class="member-badge activo">ACTIVO</span>`;
     const plan    = PLANS[m.plan];
+    const overdue = plan?.type === 'clases'
+      ? (m.classesLeft ?? 0) <= 0
+      : isOverdue(m.expiryDate);
+    const badge = m.disabled
+      ? '<span class="member-badge disabled-badge-pill">INACTIVO</span>'
+      : overdue
+        ? '<span class="member-badge vencido">VENCIDO</span>'
+        : '<span class="member-badge activo">ACTIVO</span>';
     let daysStr;
     if (plan?.type === 'clases') {
       const cl = m.classesLeft ?? 0;
@@ -428,19 +445,23 @@ function renderMembers() {
       const days = daysUntil(m.expiryDate);
       daysStr = overdue ? `Venció hace ${Math.abs(days)}d` : days <= 7 ? `⚠ Vence en ${days}d` : `Vence: ${formatDate(m.expiryDate)}`;
     }
+    // daysLeft is scoped outside template for class
+    const daysLeft = (plan?.type !== 'clases' && m.expiryDate) ? daysUntil(m.expiryDate) : null;
+    const expiryClass = overdue ? 'text-danger' : (daysLeft !== null && daysLeft <= 7) ? 'text-warning' : '';
+    const disabled = m.disabled === true;
     return `
-      <div class="member-card ${overdue ? 'overdue' : ''}" onclick="openMemberDetail('${m.id}')">
+      <div class="member-card ${overdue ? 'overdue' : ''} ${disabled ? 'member-disabled' : ''}" onclick="openMemberDetail('${m.id}')">
         <div class="member-card-header">
-          <div class="member-avatar">${initials(m.name)}</div>
+          <div class="member-avatar" style="${m.photo ? `background-image:url('${m.photo}');background-size:cover;background-position:center;font-size:0` : ''}">${m.photo ? '' : initials(m.name)}</div>
           <div class="member-info">
-            <div class="member-name">${m.name}</div>
+            <div class="member-name">${m.name} ${disabled ? '<span class="disabled-badge">INACTIVO</span>' : ''}</div>
             <div class="member-id">${m.cedula}</div>
           </div>
           ${badge}
         </div>
         <div class="member-card-body">
           <span class="member-plan-chip">${PLANS[m.plan]?.name || m.plan}</span>
-          <span class="member-expiry ${overdue ? 'text-danger' : days <= 7 ? 'text-warning' : ''}">${daysStr}</span>
+          <span class="member-expiry ${expiryClass}">${daysStr}</span>
         </div>
         ${m.phone ? `<div class="member-phone">📞 ${m.phone}</div>` : ''}
       </div>`;
@@ -499,6 +520,24 @@ function openMemberDetail(memberId) {
             ${c.overdue ? '<span style="color:var(--danger);font-size:.7rem">⚠ vencido</span>' : ''}
           </div>`).join('')}
     </div>`;
+  // Footer extra buttons
+  const footerExtra = document.getElementById('memberDetailFooterExtra');
+  if (footerExtra) {
+    const mid = m.id;
+    footerExtra.innerHTML =
+      '<button class="btn-stats-open" onclick="openStatsModal(\'' + mid + '\')">📊 Stats / RM</button>' +
+      (window.matchMedia('(max-width:768px)').matches
+        ? '<button class="btn-photo" onclick="openPhotoCapture(\'' + mid + '\')">📷 Foto</button>'
+        : '');
+  }
+  // Update disable button label dynamically
+  const disableBtn = document.querySelector('.btn-disable');
+  if (disableBtn) {
+    disableBtn.textContent = m.disabled ? '✓ Reactivar' : '⊘ Deshabilitar';
+    disableBtn.style.background = m.disabled ? 'rgba(60,255,138,.1)' : '';
+    disableBtn.style.borderColor = m.disabled ? 'rgba(60,255,138,.3)' : '';
+    disableBtn.style.color = m.disabled ? 'var(--success)' : '';
+  }
   openModal('memberDetailModal');
 }
 
@@ -507,7 +546,7 @@ async function deleteMemberConfirm() {
   const id = state.currentMemberId;
   if (!id) return;
   const m = state.members.find(x => x.id === id);
-  if (!confirm(`¿Eliminar a ${m?.name}? Esta acción no se puede deshacer.`)) return;
+  if (!confirm(`¿Eliminar PERMANENTEMENTE a ${m?.name}? Esta acción no se puede deshacer.`)) return;
 
   state.members  = state.members.filter(x => x.id !== id);
   state.payments = state.payments.filter(x => x.memberId !== id);
@@ -515,7 +554,21 @@ async function deleteMemberConfirm() {
 
   await deleteMemberFromDB(id);
   closeModal('memberDetailModal');
-  showToast('Miembro eliminado', 'error');
+  showToast('Miembro eliminado permanentemente', 'error');
+  renderMembers();
+  renderDashboard();
+}
+
+async function toggleMemberDisabled() {
+  if (!isAdmin()) { requireAdmin(() => toggleMemberDisabled()); return; }
+  const id = state.currentMemberId;
+  if (!id) return;
+  const m = state.members.find(x => x.id === id);
+  if (!m) return;
+  m.disabled = !m.disabled;
+  await persistMember(m);
+  closeModal('memberDetailModal');
+  showToast(m.disabled ? `${m.name} deshabilitado` : `${m.name} reactivado`);
   renderMembers();
   renderDashboard();
 }
@@ -627,6 +680,12 @@ async function registerCheckin(memberId) {
 
   document.getElementById('checkinSearch').value = '';
   document.getElementById('checkinSuggestions').innerHTML = '';
+
+  // ── Validación: miembro deshabilitado ───────────────────
+  if (m.disabled) {
+    showToast(`⛔ ${m.name} está INACTIVO. Contacta al administrador.`, 'error');
+    return;
+  }
 
   // ── Validación 1h cooldown ──────────────────────────────
   if (m.lastCheckin) {
@@ -785,7 +844,7 @@ async function seedDemo() {
     const plan        = PLANS[dm.plan];
     const expiryDate  = plan.type === 'time'   ? addMonths(startDate, plan.months) : null;
     const classesLeft = plan.type === 'clases' ? (dm.classes ?? plan.classes) : null;
-    const m = { id:uid(), name:dm.name, cedula:dm.cedula, phone:dm.phone, email:dm.email, plan:dm.plan, startDate, expiryDate, classesLeft, notes:dm.notes||'', createdAt:startDate, lastCheckin:null };
+    const m = { id:uid(), name:dm.name, cedula:dm.cedula, phone:dm.phone, email:dm.email, plan:dm.plan, startDate, expiryDate, classesLeft, notes:dm.notes||'', createdAt:startDate, lastCheckin:null, disabled:false, photo:null, stats:{}, statsHistory:[] };
     state.members.push(m);
     state.payments.push({ id:uid(), memberId:m.id, memberName:m.name, plan:dm.plan, amount:plan.price, payDate:startDate, expiryDate: expiryDate || startDate, method:'efectivo', status:'pagado' });
   }
@@ -938,6 +997,154 @@ async function adminRegisterPayment() {
   renderAdminSection();
   renderDashboard();
   renderMembers();
+}
+
+// =====================================================
+//  FOTO DE PERFIL (móvil)
+// =====================================================
+
+// Stores photo data URL for new member form (before save)
+let pendingNewMemberPhoto = null;
+
+function captureNewMemberPhoto() {
+  const input = document.getElementById('photoInput');
+  input.setAttribute('data-mode', 'new');
+  input.click();
+}
+
+function openPhotoCapture(memberId) {
+  const input = document.getElementById('photoInput');
+  input.setAttribute('data-mode', 'existing');
+  input.setAttribute('data-member', memberId);
+  input.click();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const photoInput = document.getElementById('photoInput');
+  if (!photoInput) return;
+
+  photoInput.addEventListener('change', async function() {
+    const file = this.files[0];
+    if (!file) return;
+    const mode = this.getAttribute('data-mode');
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target.result;
+      if (mode === 'new') {
+        pendingNewMemberPhoto = dataUrl;
+        const prev = document.getElementById('newMemberPhotoPreview');
+        if (prev) prev.innerHTML = '<img src="' + dataUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" />';
+        showToast('✓ Foto lista para guardar');
+      } else {
+        const memberId = this.getAttribute('data-member');
+        const m = state.members.find(x => x.id === memberId);
+        if (!m) return;
+        m.photo = dataUrl;
+        await persistMember(m);
+        showToast('✓ Foto actualizada');
+        renderMembers();
+        if (state.currentMemberId === memberId) openMemberDetail(memberId);
+      }
+    };
+    reader.readAsDataURL(file);
+    this.value = '';
+  });
+});
+
+// =====================================================
+//  ESTADÍSTICAS / RMs  
+// =====================================================
+
+const STAT_FIELDS = [
+  { key: 'backSquat',    label: 'Back Squat',     unit: 'kg', icon: '🏋️' },
+  { key: 'frontSquat',   label: 'Front Squat',    unit: 'kg', icon: '🏋️' },
+  { key: 'deadlift',     label: 'Deadlift',        unit: 'kg', icon: '💪' },
+  { key: 'clean',        label: 'Clean',           unit: 'kg', icon: '🔱' },
+  { key: 'cleanJerk',    label: 'Clean & Jerk',    unit: 'kg', icon: '🔱' },
+  { key: 'snatch',       label: 'Snatch',          unit: 'kg', icon: '⚡' },
+  { key: 'overheadSq',   label: 'Overhead Squat',  unit: 'kg', icon: '🔺' },
+  { key: 'press',        label: 'Strict Press',    unit: 'kg', icon: '💪' },
+  { key: 'benchPress',   label: 'Bench Press',     unit: 'kg', icon: '🏋️' },
+  { key: 'pullUps',      label: 'Pull-ups máx.',   unit: 'reps', icon: '🤸' },
+  { key: 'rowCal500',    label: 'Remo 500m',       unit: 's',  icon: '🚣' },
+  { key: 'fran',         label: 'Fran (21-15-9)',  unit: 's',  icon: '🔥' },
+  { key: 'weight',       label: 'Peso corporal',   unit: 'kg', icon: '⚖️' },
+  { key: 'height',       label: 'Estatura',        unit: 'cm', icon: '📏' },
+];
+
+function openStatsModal(memberId) {
+  const m = state.members.find(x => x.id === memberId);
+  if (!m) return;
+  state.currentMemberId = memberId;
+
+  const stats = m.stats || {};
+  const admin = isAdmin();
+
+  document.getElementById('statsModalTitle').textContent = m.name.toUpperCase();
+  document.getElementById('statsGrid').innerHTML = STAT_FIELDS.map(f => `
+    <div class="stat-field-card">
+      <div class="stat-field-icon">${f.icon}</div>
+      <div class="stat-field-label">${f.label}</div>
+      <div class="stat-field-unit">${f.unit}</div>
+      <input
+        class="stat-field-input"
+        type="number"
+        id="stat_${f.key}"
+        value="${stats[f.key] ?? ''}"
+        placeholder="—"
+        step="${f.unit === 'kg' || f.unit === 'cm' ? '0.5' : '1'}"
+        ${admin ? '' : ''}
+      />
+    </div>
+  `).join('');
+
+  // Load history
+  renderStatsHistory(m);
+  openModal('statsModal');
+}
+
+function renderStatsHistory(m) {
+  const history = (m.statsHistory || []).slice().reverse().slice(0, 5);
+  const el = document.getElementById('statsHistory');
+  if (!el) return;
+  if (!history.length) { el.innerHTML = '<div class="empty-state">Sin historial aún</div>'; return; }
+  el.innerHTML = history.map(h => {
+    const summary = Object.entries(h.values)
+      .filter(([,v]) => v)
+      .map(([k,v]) => {
+        const f = STAT_FIELDS.find(x => x.key === k);
+        return f ? f.label + ': ' + v + f.unit : '';
+      }).filter(Boolean).slice(0,3).join(' · ');
+    return '<div class="stats-history-row">' +
+      '<span class="stats-hist-date">' + h.date + '</span>' +
+      '<span class="stats-hist-summary">' + summary + '</span>' +
+      '</div>';
+  }).join('');
+}
+
+async function saveStats() {
+  const memberId = state.currentMemberId;
+  const m = state.members.find(x => x.id === memberId);
+  if (!m) return;
+
+  const newStats = {};
+  STAT_FIELDS.forEach(f => {
+    const val = document.getElementById('stat_' + f.key)?.value;
+    if (val !== '' && val !== undefined) newStats[f.key] = Number(val);
+  });
+
+  // Save to history
+  if (!m.statsHistory) m.statsHistory = [];
+  m.statsHistory.push({ date: today(), values: { ...newStats } });
+  // Keep last 20 snapshots
+  if (m.statsHistory.length > 20) m.statsHistory = m.statsHistory.slice(-20);
+
+  m.stats = newStats;
+  await persistMember(m);
+
+  closeModal('statsModal');
+  showToast('✓ Estadísticas guardadas');
 }
 
 // =====================================================

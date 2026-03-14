@@ -333,6 +333,16 @@
         <label>Notas</label>
         <textarea id="mNotes" placeholder="Observaciones, condiciones médicas, etc."></textarea>
       </div>
+      <!-- Photo capture — only shown on mobile -->
+      <div class="photo-capture-row mobile-only">
+        <div class="photo-preview" id="newMemberPhotoPreview">
+          <span style="font-size:2rem;opacity:.3">📷</span>
+        </div>
+        <div>
+          <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:6px">Foto del miembro (opcional)</div>
+          <button class="btn-photo" type="button" onclick="captureNewMemberPhoto()">📷 Tomar foto</button>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('addMemberModal')">Cancelar</button>
@@ -349,8 +359,10 @@
       <button class="modal-close" onclick="closeModal('memberDetailModal')">✕</button>
     </div>
     <div class="modal-body" id="memberDetailBody"></div>
-    <div class="modal-footer">
-      <button class="btn-danger" onclick="deleteMemberConfirm()">Eliminar</button>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
+      <div id="memberDetailFooterExtra" style="display:flex;gap:8px;flex:1;min-width:fit-content"></div>
+      <button class="btn-danger" onclick="deleteMemberConfirm()">🗑 Eliminar</button>
+      <button class="btn-disable" onclick="toggleMemberDisabled()">⊘ Deshabilitar</button>
       <button class="btn-secondary" onclick="closeModal('memberDetailModal')">Cerrar</button>
       <button class="btn-primary" onclick="openRenewModal()">Renovar Plan</button>
     </div>
@@ -486,6 +498,31 @@
   </div>
 </div>
 
+<!-- MODAL: STATS / RM -->
+<div class="modal-overlay" id="statsModal">
+  <div class="modal modal-wide modal-stats">
+    <div class="modal-header">
+      <div>
+        <h2 id="statsModalTitle">STATS</h2>
+        <div style="font-family:monospace;font-size:.65rem;letter-spacing:2px;color:var(--text-secondary);margin-top:2px">RECORDS PERSONALES / RMs</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('statsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="stats-grid-rm" id="statsGrid"></div>
+
+      <div style="margin-top:1.5rem">
+        <div style="font-family:monospace;font-size:.68rem;letter-spacing:2px;color:var(--text-secondary);margin-bottom:.75rem">HISTORIAL DE CAMBIOS</div>
+        <div id="statsHistory"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('statsModal')">Cancelar</button>
+      <button class="btn-primary" onclick="saveStats()">💾 Guardar Stats</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ADMIN AUTH -->
 <div class="modal-overlay" id="adminAuthModal">
   <div class="modal modal-narrow">
@@ -512,6 +549,9 @@
 
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
+
+<!-- Hidden file input for photo capture (mobile) -->
+<input type="file" id="photoInput" accept="image/*" capture="user" style="display:none" />
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
