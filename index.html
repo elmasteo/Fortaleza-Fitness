@@ -131,17 +131,20 @@
     <div class="section-header">
       <h3 style="color:var(--text-primary);font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:2px;">HISTORIAL DE PAGOS</h3>
     </div>
-    <div class="table-wrapper">
+    <!-- Desktop table -->
+    <div class="table-wrapper hide-mobile">
       <table class="data-table">
         <thead>
           <tr>
             <th>Miembro</th><th>Plan</th><th>Monto</th>
-            <th>Fecha de Pago</th><th>Próx. Vencimiento</th><th>Método</th><th>Estado</th>
+            <th>Fecha Pago</th><th>Vencimiento</th><th>Método</th><th>Estado</th>
           </tr>
         </thead>
         <tbody id="paymentsBody"></tbody>
       </table>
     </div>
+    <!-- Mobile cards -->
+    <div class="payments-cards show-mobile" id="paymentsCards"></div>
   </section>
 
   <!-- CHECK-IN -->
@@ -150,8 +153,10 @@
       <div class="checkin-search-card">
         <h2>Registro de Entrada</h2>
         <p>Busca al miembro por nombre, cédula o ID</p>
+        <div class="gym-hours-banner" id="gymHoursBanner"></div>
         <div class="checkin-input-group">
-          <input type="text" id="checkinSearch" placeholder="Buscar miembro..." oninput="searchCheckin()" autocomplete="off" />
+          <input type="text" id="checkinSearch" placeholder="Nombre o cédula..." oninput="searchCheckin()"
+            onkeydown="if(event.key==='Enter') manualCheckin()" autocomplete="off" />
           <button class="btn-primary" onclick="manualCheckin()">Registrar</button>
         </div>
         <div class="checkin-suggestions" id="checkinSuggestions"></div>
@@ -225,6 +230,20 @@
           <span>📱</span> Pagar con Nequi
         </button>
       </div>
+      <div class="plan-card plan-seven" data-plan="seven">
+        <div class="plan-badge plan-badge-seven">⚡ Alto Rendimiento</div>
+        <div class="plan-name">SEVEN</div>
+        <div class="plan-price">$180.000<span>/mes</span></div>
+        <ul class="plan-features">
+          <li>✓ Clases ilimitadas</li>
+          <li>✓ Entrenamiento especializado</li>
+          <li>✓ Vestiarios + Casillero</li>
+          <li>✓ Seguimiento de rendimiento</li>
+        </ul>
+        <button class="btn-plan btn-nequi" onclick="openNequiModal('seven', 180000)">
+          <span>📱</span> Pagar con Nequi
+        </button>
+      </div>
     </div>
   </section>
   <!-- ADMIN -->
@@ -266,6 +285,7 @@
             <option value="paquete12">12 Clases — $120.000</option>
             <option value="paquete15">15 Clases — $140.000</option>
             <option value="mesIlimitado">Mes Ilimitado — $160.000</option>
+            <option value="seven">Seven Alto Rendimiento — $180.000</option>
           </select>
         </div>
         <div class="form-group">
@@ -309,6 +329,7 @@
             <option value="paquete12">12 Clases — $120.000</option>
             <option value="paquete15">15 Clases — $140.000</option>
             <option value="mesIlimitado">Mes Ilimitado — $160.000</option>
+            <option value="seven">Seven Alto Rendimiento — $180.000</option>
           </select>
         </div>
         <div class="form-group"><label>Fecha de Inicio *</label><input type="date" id="mStartDate" /></div>
@@ -361,10 +382,12 @@
     <div class="modal-body" id="memberDetailBody"></div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
       <div id="memberDetailFooterExtra" style="display:flex;gap:8px;flex:1;min-width:fit-content"></div>
-      <button class="btn-danger" onclick="deleteMemberConfirm()">🗑 Eliminar</button>
-      <button class="btn-disable" onclick="toggleMemberDisabled()">⊘ Deshabilitar</button>
+      <span id="adminOnlyBtns" style="display:none;gap:8px;align-items:center">
+        <button class="btn-danger"   onclick="deleteMemberConfirm()">🗑 Eliminar</button>
+        <button class="btn-disable"  onclick="toggleMemberDisabled()">⊘ Deshabilitar</button>
+        <button class="btn-primary"  onclick="openRenewModal()">Renovar Plan</button>
+      </span>
       <button class="btn-secondary" onclick="closeModal('memberDetailModal')">Cerrar</button>
-      <button class="btn-primary" onclick="openRenewModal()">Renovar Plan</button>
     </div>
   </div>
 </div>
@@ -384,6 +407,7 @@
           <option value="paquete12">12 Clases — $120.000</option>
           <option value="paquete15">15 Clases — $140.000</option>
           <option value="mesIlimitado">Mes Ilimitado — $160.000</option>
+          <option value="seven">Seven Alto Rendimiento — $180.000</option>
         </select>
       </div>
       <div class="form-group">

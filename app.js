@@ -8,10 +8,11 @@
 //   type: 'time'   → acceso por días (expiryDate controla el vencimiento)
 //   type: 'clases' → paquete de clases (classesLeft controla el saldo)
 const PLANS = {
-  clase:        { name: 'Clase Individual', price: 20000,  type: 'clases', classes: 1,  label: '$20.000/clase' },
-  paquete12:    { name: '12 Clases',        price: 120000, type: 'clases', classes: 12, label: '$120.000/12 clases' },
-  paquete15:    { name: '15 Clases',        price: 140000, type: 'clases', classes: 15, label: '$140.000/15 clases' },
-  mesIlimitado: { name: 'Mes Ilimitado',    price: 160000, type: 'time',   months: 1,   label: '$160.000/mes' },
+  clase:        { name: 'Clase Individual',  price: 20000,  type: 'clases', classes: 1,  label: '$20.000/clase' },
+  paquete12:    { name: '12 Clases',         price: 120000, type: 'clases', classes: 12, label: '$120.000/12 clases' },
+  paquete15:    { name: '15 Clases',         price: 140000, type: 'clases', classes: 15, label: '$140.000/15 clases' },
+  mesIlimitado: { name: 'Mes Ilimitado',     price: 160000, type: 'time',   months: 1,   label: '$160.000/mes' },
+  seven:        { name: 'Seven (Alto Rendimiento)', price: 180000, type: 'time', months: 1, label: '$180.000/mes' },
 };
 
 // ===== ESTADO LOCAL =====
@@ -310,7 +311,7 @@ function showSection(name) {
   if (name === 'dashboard') renderDashboard();
   if (name === 'members')   renderMembers();
   if (name === 'payments')  renderPayments();
-  if (name === 'checkin')   renderTodayCheckins();
+  if (name === 'checkin')   { renderTodayCheckins(); renderGymHoursBanner(); }
   if (name === 'admin')     renderAdminSection();
   if (window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
 }
@@ -543,6 +544,9 @@ function openMemberDetail(memberId) {
     disableBtn.style.borderColor = m.disabled ? 'rgba(60,255,138,.3)' : '';
     disableBtn.style.color = m.disabled ? 'var(--success)' : '';
   }
+  // Mostrar/ocultar botones admin según sesión activa
+  const adminBtns = document.getElementById('adminOnlyBtns');
+  if (adminBtns) adminBtns.style.display = isAdmin() ? 'flex' : 'none';
   openModal('memberDetailModal');
 }
 
@@ -618,26 +622,49 @@ async function renewPlan() {
 //  PAGOS
 // =====================================================
 function renderPayments() {
-  const tbody = document.getElementById('paymentsBody');
+  const tbody  = document.getElementById('paymentsBody');
+  const cards  = document.getElementById('paymentsCards');
   const sorted = [...state.payments].sort((a, b) => b.payDate.localeCompare(a.payDate));
+  const METHOD_LABELS = { efectivo:'Efectivo', nequi:'Nequi/Bre-B', transferencia:'Transferencia', tarjeta:'Tarjeta' };
 
   if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-secondary)">Sin pagos registrados</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-secondary)">Sin pagos registrados</td></tr>';
+    if (cards) cards.innerHTML = '<div class="empty-state">Sin pagos registrados</div>';
     return;
   }
 
-  const METHOD_LABELS = { efectivo:'Efectivo', nequi:'Nequi/Bre-B', transferencia:'Transferencia', tarjeta:'Tarjeta' };
+  // Desktop table rows
+  if (tbody) {
+    tbody.innerHTML = sorted.map(p => `
+      <tr>
+        <td>${p.memberName}</td>
+        <td><span class="member-plan-chip">${PLANS[p.plan]?.name || p.plan}</span></td>
+        <td style="font-family:monospace;color:var(--accent)">${formatCOP(p.amount)}</td>
+        <td>${formatDate(p.payDate)}</td>
+        <td>${formatDate(p.expiryDate)}</td>
+        <td>${METHOD_LABELS[p.method] || p.method}</td>
+        <td><span class="member-badge ${p.status === 'pagado' ? 'activo' : 'vencido'}">${p.status.toUpperCase()}</span></td>
+      </tr>`).join('');
+  }
 
-  tbody.innerHTML = sorted.map(p => `
-    <tr>
-      <td>${p.memberName}</td>
-      <td><span class="member-plan-chip">${PLANS[p.plan]?.name || p.plan}</span></td>
-      <td style="font-family:monospace;color:var(--accent)">${formatCOP(p.amount)}</td>
-      <td>${formatDate(p.payDate)}</td>
-      <td>${formatDate(p.expiryDate)}</td>
-      <td>${METHOD_LABELS[p.method] || p.method}</td>
-      <td><span class="member-badge ${p.status === 'pagado' ? 'activo' : 'vencido'}">${p.status.toUpperCase()}</span></td>
-    </tr>`).join('');
+  // Mobile cards
+  if (cards) {
+    cards.innerHTML = sorted.map(p => `
+      <div class="payment-card">
+        <div class="payment-card-header">
+          <span class="payment-card-name">${p.memberName}</span>
+          <span class="member-badge ${p.status === 'pagado' ? 'activo' : 'vencido'}">${p.status.toUpperCase()}</span>
+        </div>
+        <div class="payment-card-row">
+          <span class="member-plan-chip">${PLANS[p.plan]?.name || p.plan}</span>
+          <span class="payment-card-amount">${formatCOP(p.amount)}</span>
+        </div>
+        <div class="payment-card-meta">
+          <span>📅 ${formatDate(p.payDate)}</span>
+          <span>💳 ${METHOD_LABELS[p.method] || p.method}</span>
+        </div>
+      </div>`).join('');
+  }
 }
 
 // =====================================================
@@ -679,6 +706,99 @@ function manualCheckin() {
   else showToast('Miembro no encontrado', 'error');
 }
 
+
+// =====================================================
+//  HORARIOS DEL GIMNASIO
+//  L-V AM:  5-6, 6-7, 7-8, 8-9, 9-11
+//  L-V PM:  17-18, 18-19, 19-20, 20-21
+//  Sábado AM: 6-7, 7-8, 8-9
+// =====================================================
+const GYM_SCHEDULE = {
+  // día 1=Lunes…5=Viernes, 6=Sábado
+  weekday: [  // L-V
+    { start: 5,  end: 6  },
+    { start: 6,  end: 7  },
+    { start: 7,  end: 8  },
+    { start: 8,  end: 9  },
+    { start: 9,  end: 11 },
+    { start: 17, end: 18 },
+    { start: 18, end: 19 },
+    { start: 19, end: 20 },
+    { start: 20, end: 21 },
+  ],
+  saturday: [ // Sábado
+    { start: 6,  end: 7  },
+    { start: 7,  end: 8  },
+    { start: 8,  end: 9  },
+  ],
+};
+
+// Devuelve el slot activo o null si está fuera de horario
+// slot: "5:00-6:00", "17:00-18:00", etc.
+function getCurrentSlot(dateObj) {
+  const d   = dateObj || new Date();
+  const dow = d.getDay(); // 0=Dom,1=Lun…6=Sab
+  const h   = d.getHours() + d.getMinutes() / 60;
+
+  let slots = null;
+  if (dow >= 1 && dow <= 5) slots = GYM_SCHEDULE.weekday;
+  if (dow === 6)             slots = GYM_SCHEDULE.saturday;
+  if (!slots) return null; // domingo
+
+  for (const s of slots) {
+    if (h >= s.start && h < s.end) {
+      return `${s.start}:00-${s.end}:00`;
+    }
+  }
+  return null;
+}
+
+// Para una timestamp guardada, devuelve en qué slot estaba
+function getSlotForTime(tsStr) {
+  if (!tsStr) return null;
+  // tsStr es "YYYY-MM-DDTHH:MM:SS" en hora local
+  const d = new Date(tsStr);
+  return getCurrentSlot(d);
+}
+
+// Devuelve el próximo slot que va a abrir
+function getNextSlotTime(dateObj) {
+  const d   = dateObj || new Date();
+  const dow = d.getDay();
+  const h   = d.getHours() + d.getMinutes() / 60;
+
+  let slots = null;
+  if (dow >= 1 && dow <= 5) slots = GYM_SCHEDULE.weekday;
+  if (dow === 6)             slots = GYM_SCHEDULE.saturday;
+  if (!slots) return 'el próximo lunes a las 5:00 AM';
+
+  // Buscar primer slot futuro hoy
+  for (const s of slots) {
+    if (s.start > h) {
+      const label = s.start >= 12
+        ? `${s.start > 12 ? s.start - 12 : s.start}:00 PM`
+        : `${s.start}:00 AM`;
+      return label;
+    }
+  }
+
+  // No hay más slots hoy
+  if (dow === 5) return 'el sábado a las 6:00 AM';
+  if (dow === 6) return 'el lunes a las 5:00 AM';
+  return 'mañana a las 5:00 AM';
+}
+
+// Estado actual del gimnasio respecto a horarios
+function getCheckinScheduleStatus() {
+  const now  = new Date();
+  const slot = getCurrentSlot(now);
+  if (slot) {
+    return { allowed: true, slot, msg: '', nextSlotTime: getNextSlotTime(now) };
+  }
+  const next = getNextSlotTime(now);
+  return { allowed: false, slot: null, msg: `El próximo horario disponible es ${next}`, nextSlotTime: next };
+}
+
 async function registerCheckin(memberId) {
   const m = state.members.find(x => x.id === memberId);
   if (!m) return;
@@ -692,17 +812,20 @@ async function registerCheckin(memberId) {
     return;
   }
 
-  // ── Validación 1h cooldown ──────────────────────────────
+  // ── Validación horario y bloque por clase ───────────────
+  const scheduleCheck = getCheckinScheduleStatus();
+  if (!scheduleCheck.allowed) {
+    showToast(`⏰ Fuera de horario. ${scheduleCheck.msg}`, 'error');
+    return;
+  }
+
+  // Bloquear si ya hizo check-in en este mismo slot horario
   if (m.lastCheckin) {
-    const lastTs  = new Date(m.lastCheckin);
-    const nowTs   = new Date();
-    const diffMin = (nowTs - lastTs) / 60000;
-    if (diffMin < 60) {
-      const minLeft = Math.ceil(60 - diffMin);
-      const nextOk  = new Date(lastTs.getTime() + 60 * 60000);
-      const hh = String(nextOk.getHours()).padStart(2,'0');
-      const mm = String(nextOk.getMinutes()).padStart(2,'0');
-      showToast(`⏱ ${m.name} ya ingresó. Próximo check-in válido a las ${hh}:${mm} (faltan ${minLeft} min)`, 'error');
+    const lastSlot = getSlotForTime(m.lastCheckin);
+    const nowSlot  = scheduleCheck.slot;
+    if (lastSlot && nowSlot && lastSlot === nowSlot) {
+      const nextSlotStart = scheduleCheck.nextSlotTime;
+      showToast(`⏱ ${m.name} ya ingresó en este horario (${nowSlot}). Próximo check-in: ${nextSlotStart}`, 'error');
       return;
     }
   }
@@ -744,6 +867,19 @@ async function registerCheckin(memberId) {
   renderTodayCheckins();
   renderDashboard();
   renderMembers();
+}
+
+function renderGymHoursBanner() {
+  const el = document.getElementById('gymHoursBanner');
+  if (!el) return;
+  const status = getCheckinScheduleStatus();
+  if (status.allowed) {
+    el.innerHTML = `<span class="hours-open">✓ Abierto · Clase ${status.slot}</span>`;
+    el.className = 'gym-hours-banner hours-banner-open';
+  } else {
+    el.innerHTML = `<span>⏰ Fuera de horario · ${status.msg}</span>`;
+    el.className = 'gym-hours-banner hours-banner-closed';
+  }
 }
 
 function renderTodayCheckins() {
@@ -795,17 +931,20 @@ function renderDashboard() {
   document.getElementById('stat-checkins').textContent = checkins;
   document.getElementById('stat-revenue').textContent  = formatCOP(revenue);
 
-  // Last checkins (any day)
-  const lastCI = state.checkins.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 5);
+  // Solo check-ins de HOY
+  const todayCIs = state.checkins
+    .filter(c => c.timestamp.startsWith(todayStr))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 8);
   const dCI = document.getElementById('dashboardCheckins');
-  dCI.innerHTML = lastCI.length === 0
-    ? '<div class="empty-state">No hay check-ins aún</div>'
-    : lastCI.map(c => `
+  dCI.innerHTML = todayCIs.length === 0
+    ? '<div class="empty-state">Sin check-ins hoy</div>'
+    : todayCIs.map(c => `
       <div class="checkin-item">
         <div class="checkin-avatar">${initials(c.memberName)}</div>
         <div class="checkin-info">
           <div class="checkin-name">${c.memberName}</div>
-          <div class="checkin-meta"><span class="member-plan-chip" style="font-size:.65rem;padding:2px 6px">${c.plan}</span></div>
+          <div class="checkin-meta"><span class="member-plan-chip" style="font-size:.65rem;padding:2px 6px">${PLANS[c.plan]?.name || c.plan}</span></div>
         </div>
         <div class="checkin-time">${c.timestamp.slice(11, 16)}</div>
       </div>`).join('');
@@ -841,6 +980,7 @@ async function seedDemo() {
     { name:'Andrés Martínez',  cedula:'79456321',   phone:'320 456 7890', email:'andres@email.com', plan:'mesIlimitado', daysAgo:5 },
     { name:'Valentina Torres', cedula:'1015678901', phone:'315 567 8901', email:'vale@email.com',   plan:'paquete15',   classes:2, notes:'Lesión rodilla' },
     { name:'Sebastián López',  cedula:'1000123456', phone:'300 678 9012', email:'seba@email.com',   plan:'clase',       classes:0 },
+    { name:'Diana Herrera',    cedula:'1098765432', phone:'315 432 1098', email:'diana@email.com',  plan:'seven',       daysAgo:3,  notes:'Atleta alto rendimiento' },
   ];
 
   for (const dm of demos) {

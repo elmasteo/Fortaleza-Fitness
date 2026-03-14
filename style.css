@@ -1646,3 +1646,208 @@ select {
 @media (max-width: 768px) {
   .mobile-only { display: flex; }
 }
+
+/* ===== PENDING PAYMENT ROW — mejoras ===== */
+.pending-payment-row {
+  align-items: center;
+}
+
+.pending-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(232,255,60,.08);
+  border: 1px solid rgba(232,255,60,.2);
+  color: var(--accent, #e8ff3c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .72rem;
+  font-weight: 700;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.pending-cedula {
+  font-size: .7rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+  margin-top: 2px;
+  letter-spacing: .5px;
+}
+
+/* ===== AJUSTES RESPONSIVE V3 ===== */
+
+/* Utility: mostrar/ocultar por breakpoint */
+@media (min-width: 641px) {
+  .show-mobile { display: none !important; }
+}
+@media (max-width: 640px) {
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: block !important; }
+}
+
+/* ── Mobile payment cards ── */
+.payments-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.payment-card {
+  background: var(--card-bg, #18181d);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payment-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.payment-card-name {
+  font-weight: 600;
+  font-size: .95rem;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payment-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.payment-card-amount {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--accent, #e8ff3c);
+}
+
+.payment-card-meta {
+  display: flex;
+  gap: 14px;
+  font-size: .75rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+/* ── Gym hours banner ── */
+.gym-hours-banner {
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: .8rem;
+  font-family: monospace;
+  letter-spacing: .5px;
+  margin-bottom: 14px;
+  text-align: center;
+  transition: all .3s;
+}
+
+.hours-banner-open {
+  background: rgba(60,255,138,.08);
+  border: 1px solid rgba(60,255,138,.25);
+  color: #3cff8a;
+}
+
+.hours-open { font-weight: 700; }
+
+.hours-banner-closed {
+  background: rgba(255,159,60,.08);
+  border: 1px solid rgba(255,159,60,.2);
+  color: #ff9f3c;
+}
+
+/* ── Check-in section responsive ── */
+@media (max-width: 640px) {
+  .checkin-hero { padding: 0; }
+
+  .checkin-search-card {
+    border-radius: 10px;
+    padding: 20px 16px;
+    margin: 0;
+  }
+
+  .checkin-search-card h2 { font-size: 1.4rem; }
+
+  .checkin-input-group {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .checkin-input-group input,
+  .checkin-input-group button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #todayCheckins .checkin-item {
+    padding: 10px 0;
+    gap: 10px;
+  }
+
+  .checkin-time {
+    font-size: .75rem;
+    white-space: nowrap;
+  }
+}
+
+/* ── Payments table: always scroll on small screens ── */
+@media (max-width: 900px) {
+  .table-wrapper {
+    -webkit-overflow-scrolling: touch;
+  }
+  .data-table th,
+  .data-table td {
+    white-space: nowrap;
+    font-size: .8rem;
+    padding: 10px 10px;
+  }
+}
+
+/* ── Seven plan card ── */
+.plan-seven {
+  border-color: rgba(255,200,50,.25) !important;
+  background: linear-gradient(135deg, rgba(255,200,50,.04), transparent) !important;
+}
+.plan-seven:hover {
+  border-color: rgba(255,200,50,.5) !important;
+}
+.plan-badge-seven {
+  background: linear-gradient(135deg, #ffb020, #ff8c00);
+  color: #000 !important;
+  border: none !important;
+}
+
+/* ── Admin buttons span display fix ── */
+#adminOnlyBtns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 500px) {
+  #adminOnlyBtns {
+    flex-wrap: wrap;
+  }
+  .modal-footer {
+    flex-direction: column-reverse;
+  }
+  .modal-footer button,
+  .modal-footer span {
+    width: 100%;
+    justify-content: center;
+  }
+  #adminOnlyBtns button { width: 100%; }
+}
