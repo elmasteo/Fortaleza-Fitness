@@ -284,6 +284,7 @@ async function submitAdminLogin() {
   errEl.textContent = '';
   document.getElementById('adminPwd').value = '';
   closeModal('adminAuthModal');
+  updateAdminUI();
 
   // Execute pending action
   if (window._pendingAdminAction) {
@@ -295,13 +296,34 @@ async function submitAdminLogin() {
 
 function adminLogout() {
   adminSession = false;
+  updateAdminUI();
   showToast('Sesión admin cerrada');
+  // Si estaba en sección protegida, redirigir al dashboard
+  const active = document.querySelector('.nav-item.active');
+  if (active && ['payments'].includes(active.dataset.section)) {
+    showSection('dashboard');
+  }
+}
+
+// Actualiza toda la UI según el estado admin (se llama al login y logout)
+function updateAdminUI() {
+  const admin = isAdmin();
+  // Nav pagos
+  const navPay = document.getElementById('navPayments');
+  if (navPay) navPay.style.display = admin ? '' : 'none';
+  // Dashboard
+  renderDashboard();
 }
 
 // =====================================================
 //  NAVEGACIÓN
 // =====================================================
 function showSection(name) {
+  // Sección protegida: redirigir si no hay admin
+  if (name === 'payments' && !isAdmin()) {
+    requireAdmin(() => showSection('payments'));
+    return;
+  }
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   document.getElementById(`section-${name}`)?.classList.add('active');
@@ -488,20 +510,51 @@ function openMemberDetail(memberId) {
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, 3);
 
+  // Teléfono → link WhatsApp
+  const waNumber = m.phone ? m.phone.replace(/\D/g, '') : '';
+  const waLink   = waNumber
+    ? `<a class="wa-link" href="https://wa.me/57${waNumber}" target="_blank" rel="noopener">
+         📱 ${m.phone} <span class="wa-badge">WhatsApp</span>
+       </a>`
+    : '—';
+
+  // Mensaje predefinido según estado
+  const planName  = PLANS[m.plan]?.name || m.plan;
+  const daysLeft  = m.expiryDate ? daysUntil(m.expiryDate) : null;
+  let waMsgRaw = '';
+  if (overdue) {
+    waMsgRaw = `Hola ${m.name.split(' ')[0]}! Te escribimos de Fortaleza Fitness. Tu membresía (${planName}) está vencida. ¿Cuándo podemos renovarla? 💪`;
+  } else if (daysLeft !== null && daysLeft <= 7) {
+    waMsgRaw = `Hola ${m.name.split(' ')[0]}! Te escribimos de Fortaleza Fitness. Tu membresía (${planName}) vence en ${daysLeft} día${daysLeft!==1?'s':''}. ¡Renuévala a tiempo! 💪`;
+  } else if (m.classesLeft !== null && (m.classesLeft ?? 0) <= 2) {
+    waMsgRaw = `Hola ${m.name.split(' ')[0]}! Te escribimos de Fortaleza Fitness. Te quedan ${m.classesLeft ?? 0} clase${(m.classesLeft??0)!==1?'s':''} en tu paquete (${planName}). ¡Recarga antes de quedarte sin! 💪`;
+  }
+  const waQuickLink = waNumber && waMsgRaw
+    ? `<a class="wa-reminder-link" href="https://wa.me/57${waNumber}?text=${encodeURIComponent(waMsgRaw)}" target="_blank" rel="noopener">
+         💬 Enviar recordatorio
+       </a>`
+    : '';
+
+  const admin = isAdmin();
+
   document.getElementById('memberDetailBody').innerHTML = `
     <div class="detail-grid">
-      <div class="detail-item"><label>Cédula / ID</label><div class="value" style="font-family:monospace">${m.cedula}</div></div>
+      <div class="detail-item"><label>Cédula / ID</label><div class="value mono">${m.cedula}</div></div>
       <div class="detail-item"><label>Estado</label><div class="value"><span class="member-badge ${overdue ? 'vencido' : 'activo'}">${overdue ? 'VENCIDO' : 'ACTIVO'}</span></div></div>
-      <div class="detail-item"><label>Teléfono</label><div class="value">${m.phone || '—'}</div></div>
+      <div class="detail-item">
+        <label>Teléfono</label>
+        <div class="value wa-cell">${waLink}${waQuickLink}</div>
+      </div>
       <div class="detail-item"><label>Email</label><div class="value">${m.email || '—'}</div></div>
-      <div class="detail-item"><label>Plan Actual</label><div class="value">${PLANS[m.plan]?.name || m.plan}${PLANS[m.plan]?.type === 'clases' ? ` <span style="background:rgba(232,255,60,.12);color:#e8ff3c;border:1px solid rgba(232,255,60,.3);border-radius:12px;padding:2px 8px;font-size:.75rem;margin-left:6px">${m.classesLeft ?? 0} clases</span>` : ''}</div></div>
+      <div class="detail-item"><label>Plan Actual</label><div class="value">${PLANS[m.plan]?.name || m.plan}${PLANS[m.plan]?.type === 'clases' ? ` <span class="classes-chip">${m.classesLeft ?? 0} clases</span>` : ''}</div></div>
       <div class="detail-item"><label>Inicio</label><div class="value">${formatDate(m.startDate)}</div></div>
       <div class="detail-item"><label>Vencimiento</label><div class="value ${overdue ? 'text-danger' : ''}">${formatDate(m.expiryDate)}</div></div>
       <div class="detail-item"><label>Miembro desde</label><div class="value">${formatDate(m.createdAt)}</div></div>
-      ${m.notes ? `<div class="detail-item" style="grid-column:1/-1"><label>Notas</label><div class="value">${m.notes}</div></div>` : ''}
+      ${m.notes ? `<div class="detail-item full-col"><label>Notas</label><div class="value">${m.notes}</div></div>` : ''}
     </div>
-    <div style="margin-top:1.5rem">
-      <div style="font-size:.75rem;letter-spacing:2px;color:var(--text-secondary);margin-bottom:.75rem;font-family:monospace">HISTORIAL DE PAGOS</div>
+    ${admin ? `
+    <div class="admin-detail-block">
+      <div class="admin-detail-label">⬟ HISTORIAL DE PAGOS</div>
       ${payments.length === 0 ? '<div class="empty-state">Sin pagos registrados</div>' :
         payments.slice(-5).reverse().map(p => `
           <div class="checkin-item">
@@ -512,9 +565,9 @@ function openMemberDetail(memberId) {
             </div>
             <div class="checkin-time" style="color:var(--success)">${p.status}</div>
           </div>`).join('')}
-    </div>
+    </div>` : ''}
     <div style="margin-top:1.5rem">
-      <div style="font-size:.75rem;letter-spacing:2px;color:var(--text-secondary);margin-bottom:.75rem;font-family:monospace">ÚLTIMOS CHECK-INS</div>
+      <div class="admin-detail-label">ÚLTIMOS CHECK-INS</div>
       ${lastCheckins.length === 0 ? '<div class="empty-state">Sin check-ins</div>' :
         lastCheckins.map(c => `
           <div class="checkin-item">
@@ -927,9 +980,19 @@ function renderDashboard() {
     .reduce((s, p) => s + p.amount, 0);
 
   document.getElementById('stat-active').textContent   = active;
-  document.getElementById('stat-overdue').textContent  = overdue;
   document.getElementById('stat-checkins').textContent = checkins;
+
+  // Elementos solo visibles para admin
+  const admin = isAdmin();
+  document.getElementById('stat-overdue').textContent  = overdue;
   document.getElementById('stat-revenue').textContent  = formatCOP(revenue);
+  ['card-revenue', 'card-overdue', 'card-expiring'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = admin ? '' : 'none';
+  });
+  // Ocultar el panel "Próximos a vencer" del dashboard-grid cuando no es admin
+  const cardExpiring = document.getElementById('card-expiring');
+  if (cardExpiring) cardExpiring.style.display = admin ? '' : 'none';
 
   // Solo check-ins de HOY
   const todayCIs = state.checkins
@@ -1321,5 +1384,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('mStartDate').value = today();
   updateClock();
   setInterval(updateClock, 1000);
+  updateAdminUI();   // oculta elementos protegidos desde el arranque
   renderDashboard();
 });

@@ -1851,3 +1851,102 @@ select {
   }
   #adminOnlyBtns button { width: 100%; }
 }
+
+/* ===== ADMIN-ONLY ELEMENTS ===== */
+
+/* Cards del dashboard que se ocultan sin admin */
+.admin-only-card {
+  /* display controlado por JS */
+}
+
+/* Nav item de Pagos — se oculta sin admin (JS lo maneja) */
+.admin-only-nav {
+  /* se oculta vía JS */
+}
+
+/* Bloque admin en detalle miembro */
+.admin-detail-block {
+  margin-top: 1.5rem;
+  padding: 14px;
+  background: rgba(232,255,60,.03);
+  border: 1px solid rgba(232,255,60,.1);
+  border-radius: 8px;
+}
+
+.admin-detail-label {
+  font-size: .7rem;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  margin-bottom: .75rem;
+  font-family: monospace;
+  text-transform: uppercase;
+}
+
+/* ===== WHATSAPP LINK ===== */
+.wa-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wa-link {
+  color: var(--text-primary, #e8e8f0);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color .15s;
+}
+.wa-link:hover { color: #25D366; }
+
+.wa-badge {
+  font-size: .65rem;
+  background: rgba(37,211,102,.12);
+  color: #25D366;
+  border: 1px solid rgba(37,211,102,.25);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-family: monospace;
+  letter-spacing: .5px;
+}
+
+.wa-reminder-link {
+  font-size: .75rem;
+  color: #25D366;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(37,211,102,.08);
+  border: 1px solid rgba(37,211,102,.2);
+  border-radius: 20px;
+  transition: all .15s;
+  width: fit-content;
+}
+.wa-reminder-link:hover { background: rgba(37,211,102,.18); }
+
+/* detail-item full width */
+.detail-item.full-col {
+  grid-column: 1 / -1;
+}
+
+/* monospace value */
+.value.mono { font-family: monospace; }
+
+/* classes chip inline */
+.classes-chip {
+  background: rgba(232,255,60,.12);
+  color: #e8ff3c;
+  border: 1px solid rgba(232,255,60,.3);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: .75rem;
+  margin-left: 6px;
+}
+
+/* ===== DASHBOARD GRID RESPONSIVE cuando hay 1 sola card ===== */
+/* Cuando solo hay una card visible (check-ins), centrarla */
+.dashboard-grid:has(> .admin-only-card[style*="none"]) {
+  grid-template-columns: 1fr;
+}
