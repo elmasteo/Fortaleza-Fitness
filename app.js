@@ -548,7 +548,7 @@ function openMemberDetail(memberId) {
   document.getElementById('memberDetailBody').innerHTML = `
     <div class="detail-grid">
       <div class="detail-item"><label>Cédula / ID</label><div class="value mono">${m.cedula}</div></div>
-      <div class="detail-item"><label>Estado</label><div class="value"><span class="member-badge ${overdue ? 'vencido' : 'activo'}">${overdue ? 'VENCIDO' : 'ACTIVO'}</span></div></div>
+      <div class="detail-item"><label>Estado</label><div class="value"><span class="member-badge ${m.disabled ? 'disabled-badge-pill' : overdue ? 'vencido' : 'activo'}">${m.disabled ? 'INACTIVO' : overdue ? 'VENCIDO' : 'ACTIVO'}</span></div></div>
       <div class="detail-item">
         <label>Teléfono</label>
         <div class="value wa-cell">${waLink}${waQuickLink}</div>
@@ -970,11 +970,13 @@ function renderTodayCheckins() {
 // =====================================================
 function renderDashboard() {
   const active  = state.members.filter(m => {
+    if (m.disabled) return false;                          // deshabilitado → no activo
     const p = PLANS[m.plan];
     if (p?.type === 'clases') return (m.classesLeft ?? 0) > 0;
     return !isOverdue(m.expiryDate);
   }).length;
   const overdue = state.members.filter(m => {
+    if (m.disabled) return false;                          // deshabilitado no cuenta como vencido
     const p = PLANS[m.plan];
     if (p?.type === 'clases') return (m.classesLeft ?? 0) <= 0;
     return isOverdue(m.expiryDate);
