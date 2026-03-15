@@ -26,7 +26,7 @@
     <button class="nav-item" onclick="showSection('members')" data-section="members">
       <span class="nav-icon">◉</span> Miembros
     </button>
-    <button class="nav-item" onclick="showSection('payments')" data-section="payments">
+    <button class="nav-item admin-only-nav" id="navPayments" onclick="requireAdmin(()=>showSection('payments'))" data-section="payments">
       <span class="nav-icon">◎</span> Pagos
     </button>
     <button class="nav-item" onclick="showSection('checkin')" data-section="checkin">
@@ -68,22 +68,24 @@
   <!-- DASHBOARD -->
   <section class="section active" id="section-dashboard">
     <div class="stats-grid">
+      <!-- Siempre visible -->
       <div class="stat-card stat-accent">
         <div class="stat-label">Miembros Activos</div>
         <div class="stat-value" id="stat-active">0</div>
         <div class="stat-icon">◉</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Ingresos del Mes</div>
-        <div class="stat-value" id="stat-revenue">$0</div>
-        <div class="stat-icon">◎</div>
-      </div>
-      <div class="stat-card">
         <div class="stat-label">Check-ins Hoy</div>
         <div class="stat-value" id="stat-checkins">0</div>
         <div class="stat-icon">◍</div>
       </div>
-      <div class="stat-card stat-warning">
+      <!-- Solo admin: ocultos por defecto, JS los muestra al autenticar -->
+      <div class="stat-card admin-only-card" id="card-revenue" style="display:none">
+        <div class="stat-label">Ingresos del Mes</div>
+        <div class="stat-value" id="stat-revenue">$0</div>
+        <div class="stat-icon">◎</div>
+      </div>
+      <div class="stat-card stat-warning admin-only-card" id="card-overdue" style="display:none">
         <div class="stat-label">Pagos Vencidos</div>
         <div class="stat-value" id="stat-overdue">0</div>
         <div class="stat-icon">⚠</div>
@@ -94,7 +96,8 @@
         <div class="card-header"><h3>Últimos Check-ins</h3><span class="badge">Hoy</span></div>
         <div class="checkin-list" id="dashboardCheckins"><div class="empty-state">No hay check-ins hoy</div></div>
       </div>
-      <div class="card">
+      <!-- Solo admin: oculto por defecto -->
+      <div class="card admin-only-card" id="card-expiring" style="display:none">
         <div class="card-header"><h3>Pagos Próximos a Vencer</h3><span class="badge badge-warn">Próximos 7 días</span></div>
         <div class="checkin-list" id="dashboardExpiring"><div class="empty-state">Sin vencimientos próximos</div></div>
       </div>

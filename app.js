@@ -308,10 +308,18 @@ function adminLogout() {
 // Actualiza toda la UI según el estado admin (se llama al login y logout)
 function updateAdminUI() {
   const admin = isAdmin();
-  // Nav pagos
+
+  // Nav Pagos: oculto sin admin
   const navPay = document.getElementById('navPayments');
   if (navPay) navPay.style.display = admin ? '' : 'none';
-  // Dashboard
+
+  // Dashboard cards admin-only: toggle explícito
+  ['card-revenue', 'card-overdue', 'card-expiring'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = admin ? 'block' : 'none';
+  });
+
+  // Re-renderizar dashboard para reflejar datos frescos
   renderDashboard();
 }
 
@@ -982,17 +990,14 @@ function renderDashboard() {
   document.getElementById('stat-active').textContent   = active;
   document.getElementById('stat-checkins').textContent = checkins;
 
-  // Elementos solo visibles para admin
+  // Elementos solo visibles para admin — toggle explícito
   const admin = isAdmin();
   document.getElementById('stat-overdue').textContent  = overdue;
   document.getElementById('stat-revenue').textContent  = formatCOP(revenue);
   ['card-revenue', 'card-overdue', 'card-expiring'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.style.display = admin ? '' : 'none';
+    if (el) el.style.display = admin ? 'block' : 'none';
   });
-  // Ocultar el panel "Próximos a vencer" del dashboard-grid cuando no es admin
-  const cardExpiring = document.getElementById('card-expiring');
-  if (cardExpiring) cardExpiring.style.display = admin ? '' : 'none';
 
   // Solo check-ins de HOY
   const todayCIs = state.checkins
@@ -1384,6 +1389,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('mStartDate').value = today();
   updateClock();
   setInterval(updateClock, 1000);
-  updateAdminUI();   // oculta elementos protegidos desde el arranque
-  renderDashboard();
+  updateAdminUI(); // oculta elementos protegidos y renderiza dashboard
 });
