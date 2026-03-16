@@ -423,6 +423,14 @@
         </select>
       </div>
     </div>
+      <div class="form-group">
+        <label>Estado del Pago</label>
+        <select id="renewPayStatus">
+          <option value="pagado">Pagado ✓</option>
+          <option value="pendiente">Pendiente — en espera de confirmación</option>
+        </select>
+      </div>
+    </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('renewModal')">Cancelar</button>
       <button class="btn-primary" onclick="renewPlan()">Confirmar Renovación</button>
@@ -546,6 +554,30 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('statsModal')">Cancelar</button>
       <button class="btn-primary" onclick="saveStats()">💾 Guardar Stats</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: MEMBER CÉDULA AUTH (para Stats) -->
+<div class="modal-overlay" id="memberAuthModal">
+  <div class="modal modal-narrow">
+    <div class="modal-header">
+      <h2>🔒 VERIFICAR IDENTIDAD</h2>
+      <button class="modal-close" onclick="closeModal('memberAuthModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="admin-auth-icon">🪪</div>
+      <p class="admin-auth-desc">Ingresa tu número de cédula para acceder a tus estadísticas</p>
+      <div class="form-group">
+        <label>Número de Cédula</label>
+        <input type="text" inputmode="numeric" id="memberAuthCedula" placeholder="Ej: 1020405678"
+          onkeydown="if(event.key==='Enter') submitMemberAuth()" autocomplete="off" />
+      </div>
+      <div class="admin-auth-error" id="memberAuthError"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('memberAuthModal')">Cancelar</button>
+      <button class="btn-primary" onclick="submitMemberAuth()">Verificar</button>
     </div>
   </div>
 </div>

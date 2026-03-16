@@ -22,7 +22,8 @@ let state = { members: [], payments: [], checkins: [], currentMemberId: null };
 // La contraseña se guarda hasheada en config.js como ADMIN_PASSWORD_HASH
 // Para generarla: en la consola del navegador ejecuta sha256('tu-contraseña')
 // O usa el helper incluido más abajo.
-let adminSession = false; // true cuando el admin ha autenticado en esta sesión
+let adminSession    = false; // true cuando el admin ha autenticado en esta sesión
+let memberSession   = null;  // memberId del miembro autenticado por cédula
 
 // ===== SUPABASE CLIENT =====
 let db = null;
@@ -183,6 +184,13 @@ async function deleteMemberFromDB(id) {
 //  UTILIDADES
 // =====================================================
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+// Muestra los primeros 3 dígitos y enmascara el resto: "102******"
+function maskCedula(cedula) {
+  if (!cedula) return '—';
+  const s = String(cedula);
+  if (s.length <= 3) return s;
+  return s.slice(0, 3) + '*'.repeat(s.length - 3);
+}
 function initials(name) { return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2); }
 function formatCOP(n) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
@@ -414,8 +422,15 @@ async function addMember() {
   const p = PLANS[plan];
   const expiryDate   = p.type === 'time'   ? addMonths(startDate, p.months) : null;
   const classesLeft  = p.type === 'clases' ? p.classes : null;
-  const member = { id: uid(), name, cedula: id, phone, email, plan, startDate, expiryDate, classesLeft, notes, createdAt: today(), lastCheckin: null, disabled: false, photo: pendingNewMemberPhoto || null, stats: {}, statsHistory: [] };
-  pendingNewMemberPhoto = null; // reset for next use
+  // Siempre creado como INACTIVO/deshabilitado hasta que se confirme el pago
+  const startAsActive = (status === 'pagado');
+  const member = {
+    id: uid(), name, cedula: id, phone, email, plan, startDate, expiryDate, classesLeft,
+    notes, createdAt: today(), lastCheckin: null,
+    disabled: !startAsActive,  // inactivo hasta confirmación
+    photo: pendingNewMemberPhoto || null, stats: {}, statsHistory: []
+  };
+  pendingNewMemberPhoto = null;
   const prevEl = document.getElementById('newMemberPhotoPreview');
   if (prevEl) prevEl.innerHTML = '<span style="font-size:2rem;opacity:.3">📷</span>';
   // Si el pago es pendiente y el plan es de clases, no otorgar clases todavía
@@ -426,18 +441,23 @@ async function addMember() {
   state.members.push(member);
   await persistMember(member);
 
-  // Siempre crear el registro de pago con el estado seleccionado
   const payment = {
     id: uid(), memberId: member.id, memberName: member.name, plan,
     amount: PLANS[plan].price, payDate: startDate, expiryDate: expiryDate || startDate, method, status,
+    type: 'registro',
   };
   state.payments.push(payment);
   await persistPayment(payment);
 
   closeModal('addMemberModal');
   clearAddForm();
-  showToast('✓ ' + name + ' registrado' + (status === 'pendiente' ? ' — pago pendiente en Admin' : ''));
+  if (status === 'pendiente') {
+    showToast('✓ ' + name + ' registrado como INACTIVO — pago pendiente en Admin');
+  } else {
+    showToast('✓ ' + name + ' registrado y activado');
+  }
   showSection('members');
+  renderDashboard();
 }
 
 function clearAddForm() {
@@ -491,7 +511,7 @@ function renderMembers() {
           <div class="member-avatar" style="${m.photo ? `background-image:url('${m.photo}');background-size:cover;background-position:center;font-size:0` : ''}">${m.photo ? '' : initials(m.name)}</div>
           <div class="member-info">
             <div class="member-name">${m.name} ${disabled ? '<span class="disabled-badge">INACTIVO</span>' : ''}</div>
-            <div class="member-id">${m.cedula}</div>
+            <div class="member-id">${isAdmin() ? m.cedula : maskCedula(m.cedula)}</div>
           </div>
           ${badge}
         </div>
@@ -547,7 +567,7 @@ function openMemberDetail(memberId) {
 
   document.getElementById('memberDetailBody').innerHTML = `
     <div class="detail-grid">
-      <div class="detail-item"><label>Cédula / ID</label><div class="value mono">${m.cedula}</div></div>
+      <div class="detail-item"><label>Cédula / ID</label><div class="value mono">${isAdmin() ? m.cedula : maskCedula(m.cedula)}</div></div>
       <div class="detail-item"><label>Estado</label><div class="value"><span class="member-badge ${m.disabled ? 'disabled-badge-pill' : overdue ? 'vencido' : 'activo'}">${m.disabled ? 'INACTIVO' : overdue ? 'VENCIDO' : 'ACTIVO'}</span></div></div>
       <div class="detail-item">
         <label>Teléfono</label>
@@ -648,33 +668,49 @@ function openRenewModal() {
 }
 
 async function renewPlan() {
-  const id     = state.currentMemberId;
-  const plan   = document.getElementById('renewPlan').value;
-  const method = document.getElementById('renewMethod').value;
+  const id         = state.currentMemberId;
+  const plan       = document.getElementById('renewPlan').value;
+  const method     = document.getElementById('renewMethod').value;
+  const payStatus  = document.getElementById('renewPayStatus')?.value || 'pagado';
   if (!id || !plan) return;
 
-  const m         = state.members.find(x => x.id === id);
-  const rp        = PLANS[plan];
+  const m   = state.members.find(x => x.id === id);
+  const rp  = PLANS[plan];
   const startDate = today();
-  const expiryDate   = rp.type === 'time'   ? addMonths(startDate, rp.months) : null;
-  const classesLeft  = rp.type === 'clases' ? (m.plan === plan && m.classesLeft ? m.classesLeft + rp.classes : rp.classes) : null;
 
-  m.plan        = plan;
-  m.startDate   = startDate;
-  m.expiryDate  = expiryDate;
-  m.classesLeft = classesLeft;
-  await persistMember(m);
+  // Calcular vigencia/clases solo si el pago ya está confirmado
+  const isPaid = payStatus === 'pagado';
+  const expiryDate  = isPaid && rp.type === 'time'   ? addMonths(startDate, rp.months) : (rp.type === 'time' ? m.expiryDate : null);
+  const classesLeft = isPaid && rp.type === 'clases' ? (m.plan === plan && m.classesLeft ? m.classesLeft + rp.classes : rp.classes) : (rp.type === 'clases' ? m.classesLeft : null);
+
+  if (isPaid) {
+    // Pago confirmado: actualizar plan y reactivar
+    m.plan        = plan;
+    m.startDate   = startDate;
+    m.expiryDate  = expiryDate;
+    m.classesLeft = classesLeft;
+    m.disabled    = false;
+    await persistMember(m);
+  }
+  // Si está pendiente, el plan del miembro NO cambia hasta que admin confirme
 
   const payment = {
     id: uid(), memberId: m.id, memberName: m.name, plan,
-    amount: rp.price, payDate: startDate, expiryDate: expiryDate || startDate, method, status: 'pagado',
+    amount: rp.price, payDate: startDate,
+    expiryDate: expiryDate || startDate,
+    method, status: payStatus, type: 'renovacion',
   };
   state.payments.push(payment);
   await persistPayment(payment);
 
   closeModal('renewModal');
   closeModal('memberDetailModal');
-  showToast(`✓ Plan renovado: ${PLANS[plan].name} para ${m.name}`);
+
+  if (isPaid) {
+    showToast(`✓ Plan renovado: ${PLANS[plan].name} para ${m.name}`);
+  } else {
+    showToast(`⏳ Renovación pendiente de ${m.name} — aparece en Admin para aprobar`);
+  }
   renderDashboard();
   renderMembers();
 }
@@ -1157,21 +1193,36 @@ async function confirmPendingPayment(paymentId) {
   }
 
   await persistPayment(payment);
-  showToast('✓ Pago de ' + payment.memberName + ' confirmado — plan activado');
+  const typeLabel = payment.type === 'renovacion' ? 'Renovación' : 'Registro';
+  showToast('✓ ' + typeLabel + ' de ' + payment.memberName + ' confirmado — plan activado');
   renderAdminSection();
   renderDashboard();
   renderMembers();
 }
 
 async function rejectPendingPayment(paymentId) {
-  if (!confirm('¿Eliminar este pago pendiente?')) return;
+  const payment = state.payments.find(p => p.id === paymentId);
+  if (!payment) return;
+  if (!confirm(`¿Rechazar el pago de ${payment.memberName}? El miembro quedará INACTIVO.`)) return;
+
+  // Eliminar el pago pendiente
   state.payments = state.payments.filter(p => p.id !== paymentId);
-  if (useSupabase) {
-    await db.from('payments').delete().eq('id', paymentId);
+  if (useSupabase) await db.from('payments').delete().eq('id', paymentId);
+
+  // Deshabilitar al miembro automáticamente
+  const member = state.members.find(m => m.id === payment.memberId);
+  if (member) {
+    member.disabled = true;
+    await persistMember(member);
+    showToast(`✕ Pago rechazado — ${member.name} marcado como INACTIVO`, 'error');
+  } else {
+    showToast('Pago rechazado', 'error');
   }
+
   saveLocal();
-  showToast('Pago pendiente eliminado', 'error');
   renderAdminSection();
+  renderDashboard();
+  renderMembers();
 }
 
 function adminMemberSelected() {
@@ -1311,6 +1362,49 @@ function openStatsModal(memberId) {
   if (!m) return;
   state.currentMemberId = memberId;
 
+  // Si no es admin, verificar identidad por cédula
+  if (!isAdmin()) {
+    // ¿Ya autenticó este miembro en la sesión actual?
+    if (memberSession !== memberId) {
+      // Pedir cédula
+      document.getElementById('memberAuthCedula').value = '';
+      document.getElementById('memberAuthError').textContent = '';
+      window._pendingStatsOpen = memberId;
+      openModal('memberAuthModal');
+      return;
+    }
+  }
+
+  _doOpenStatsModal(memberId);
+}
+
+function submitMemberAuth() {
+  const cedula  = document.getElementById('memberAuthCedula').value.trim();
+  const errEl   = document.getElementById('memberAuthError');
+  const memberId = window._pendingStatsOpen;
+  const m = state.members.find(x => x.id === memberId);
+
+  if (!cedula) { errEl.textContent = 'Ingresa tu cédula'; return; }
+  if (!m)      { errEl.textContent = 'Miembro no encontrado'; return; }
+
+  if (cedula !== m.cedula) {
+    errEl.textContent = '❌ Cédula incorrecta';
+    document.getElementById('memberAuthCedula').value = '';
+    return;
+  }
+
+  // Autenticación exitosa
+  memberSession = memberId;
+  window._pendingStatsOpen = null;
+  closeModal('memberAuthModal');
+  _doOpenStatsModal(memberId);
+}
+
+function _doOpenStatsModal(memberId) {
+  const m = state.members.find(x => x.id === memberId);
+  if (!m) return;
+  state.currentMemberId = memberId;
+
   const stats = m.stats || {};
   const admin = isAdmin();
 
@@ -1377,6 +1471,7 @@ async function saveStats() {
   await persistMember(m);
 
   closeModal('statsModal');
+  memberSession = null; // limpiar sesión temporal del miembro
   showToast('✓ Estadísticas guardadas');
 }
 
