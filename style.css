@@ -1950,3 +1950,40 @@ select {
 .dashboard-grid:has(> .admin-only-card[style*="none"]) {
   grid-template-columns: 1fr;
 }
+
+/* ===== MEMBER CEDULA AUTH ===== */
+/* Reutiliza estilos del admin auth modal — no requiere CSS extra */
+
+/* Pending payment row: type badge */
+.pending-type-badge {
+  display: inline-block;
+  font-size: .65rem;
+  font-family: monospace;
+  letter-spacing: 1px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(255,159,60,.1);
+  color: #ff9f3c;
+  border: 1px solid rgba(255,159,60,.2);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.pending-type-badge.registro {
+  background: rgba(60,200,255,.1);
+  color: #3cc8ff;
+  border-color: rgba(60,200,255,.2);
+}
+
+/* Renew modal status notice */
+.renew-pending-notice {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255,159,60,.07);
+  border: 1px solid rgba(255,159,60,.2);
+  border-radius: 6px;
+  font-size: .78rem;
+  color: #ff9f3c;
+  line-height: 1.5;
+  display: none;
+}
